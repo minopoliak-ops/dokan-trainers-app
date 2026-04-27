@@ -109,11 +109,6 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
       return;
     }
 
-    const blackout = blackouts.find((b) => b.date === trainingDate);
-    if (blackout && !confirm(`Tento dátum je označený ako: ${blackout.reason}. Chceš tréning aj tak pridať?`)) {
-      return;
-    }
-
     const supabase = createClient();
 
     const { error } = await supabase.from("trainings").upsert(
@@ -145,8 +140,8 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
 
     const [year, month] = selectedMonth.split("-").map(Number);
     const lastDay = new Date(year, month, 0).getDate();
-
     const blackoutMap = new Map(blackouts.map((b) => [b.date, b.reason]));
+
     const rows: any[] = [];
     const skipped: string[] = [];
 
@@ -218,17 +213,27 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
 
     if (!current) {
       const { error } = await supabase.from("attendance").upsert(
-        { training_id: trainingId, student_id: studentId, status: "present" },
+        {
+          training_id: trainingId,
+          student_id: studentId,
+          status: "present",
+        },
         { onConflict: "training_id,student_id" }
       );
+
       if (error) return alert(error.message);
     }
 
     if (current === "present") {
       const { error } = await supabase.from("attendance").upsert(
-        { training_id: trainingId, student_id: studentId, status: "absent" },
+        {
+          training_id: trainingId,
+          student_id: studentId,
+          status: "absent",
+        },
         { onConflict: "training_id,student_id" }
       );
+
       if (error) return alert(error.message);
     }
 
@@ -250,7 +255,9 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
     return `${d.getDate()}.${d.getMonth() + 1}.`;
   }
 
-  if (!dojo) return <p>Načítavam...</p>;
+  if (!dojo) {
+    return <p>Načítavam...</p>;
+  }
 
   return (
     <div className="space-y-6">
@@ -272,7 +279,9 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
       </div>
 
       <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
-        <h2 className="mb-4 text-2xl font-bold">Automaticky vygenerovať tréningy</h2>
+        <h2 className="mb-4 text-2xl font-bold">
+          Automaticky vygenerovať tréningy
+        </h2>
 
         <div className="mb-4 flex flex-wrap gap-2">
           {weekDays.map((day) => (
@@ -325,7 +334,9 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
       </div>
 
       <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
-        <h2 className="mb-4 text-2xl font-bold">Pridať jeden tréning ručne</h2>
+        <h2 className="mb-4 text-2xl font-bold">
+          Pridať jeden tréning ručne
+        </h2>
 
         <div className="grid gap-3 md:grid-cols-4">
           <input
@@ -364,7 +375,7 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
+      <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-black/10 sm:p-6">
         <h2 className="mb-4 text-2xl font-bold">Prezenčka za mesiac</h2>
 
         {trainings.length === 0 ? (
@@ -376,65 +387,75 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
             V tomto dojo ešte nie sú žiadni žiaci.
           </p>
         ) : (
-          <table className="w-full min-w-[900px] border-separate border-spacing-0">
-            <thead>
-              <tr>
-                <th className="sticky left-0 z-10 bg-white p-3 text-left">
-                  Žiak
-                </th>
-
-                {trainings.map((training) => (
-                  <th key={training.id} className="min-w-[120px] p-3 text-center">
-                    <div className="rounded-2xl bg-brand-cream p-3">
-                      <p className="text-sm font-bold">
-                        {training.training_topics?.name || "Bez témy"}
-                      </p>
-                      <p className="text-lg font-black">
-                        {formatDate(training.training_date)}
-                      </p>
-                    </div>
+          <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+            <table className="min-w-max border-separate border-spacing-0">
+              <thead>
+                <tr>
+                  <th className="sticky left-0 z-30 min-w-[180px] border-b bg-white p-3 text-left sm:min-w-[240px]">
+                    Žiak
                   </th>
-                ))}
-              </tr>
-            </thead>
 
-            <tbody>
-              {students.map((student) => (
-                <tr key={student.id}>
-                  <td className="sticky left-0 z-10 border-t bg-white p-3">
-                    <p className="font-bold">
-                      {student.first_name} {student.last_name}
-                    </p>
-                    <p className="text-sm text-black/60">
-                      {student.technical_grade || "Bez stupňa"}
-                    </p>
-                  </td>
-
-                  {trainings.map((training) => {
-                    const status = getAttendance(training.id, student.id);
-
-                    return (
-                      <td key={training.id} className="border-t p-3 text-center">
-                        <button
-                          onClick={() => cycleAttendance(training.id, student.id)}
-                          className={`mx-auto flex h-12 w-12 items-center justify-center rounded-xl text-white transition ${
-                            status === "present"
-                              ? "bg-green-600"
-                              : status === "absent"
-                              ? "bg-red-600"
-                              : "bg-black/20"
-                          }`}
-                        >
-                          {status === "present" && <Check />}
-                          {status === "absent" && <X />}
-                        </button>
-                      </td>
-                    );
-                  })}
+                  {trainings.map((training) => (
+                    <th
+                      key={training.id}
+                      className="min-w-[110px] border-b p-3 text-center sm:min-w-[140px]"
+                    >
+                      <div className="rounded-2xl bg-brand-cream p-3">
+                        <p className="text-xs font-bold sm:text-sm">
+                          {training.training_topics?.name || "Bez témy"}
+                        </p>
+                        <p className="text-lg font-black">
+                          {formatDate(training.training_date)}
+                        </p>
+                      </div>
+                    </th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+
+              <tbody>
+                {students.map((student) => (
+                  <tr key={student.id}>
+                    <td className="sticky left-0 z-20 min-w-[180px] border-b bg-white p-3 shadow-[8px_0_12px_-12px_rgba(0,0,0,0.5)] sm:min-w-[240px]">
+                      <p className="font-bold leading-tight">
+                        {student.first_name} {student.last_name}
+                      </p>
+                      <p className="text-sm text-black/60">
+                        {student.technical_grade || "Bez stupňa"}
+                      </p>
+                    </td>
+
+                    {trainings.map((training) => {
+                      const status = getAttendance(training.id, student.id);
+
+                      return (
+                        <td
+                          key={training.id}
+                          className="border-b p-3 text-center"
+                        >
+                          <button
+                            onClick={() =>
+                              cycleAttendance(training.id, student.id)
+                            }
+                            className={`mx-auto flex h-12 w-12 items-center justify-center rounded-xl text-white ${
+                              status === "present"
+                                ? "bg-green-600"
+                                : status === "absent"
+                                ? "bg-red-600"
+                                : "bg-black/20"
+                            }`}
+                          >
+                            {status === "present" && <Check />}
+                            {status === "absent" && <X />}
+                          </button>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
