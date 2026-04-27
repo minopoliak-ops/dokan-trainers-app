@@ -3,7 +3,17 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "DOKAN Trénerská zóna",
-  description: "Interná aplikácia pre DOKAN"
+  description: "Interná aplikácia pre DOKAN",
+  applicationName: "DOKAN",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "DOKAN"
+  },
+  icons: {
+    icon: "/logo.png",
+    apple: "/logo.png"
+  }
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
