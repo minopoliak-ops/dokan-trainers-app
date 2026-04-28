@@ -64,19 +64,21 @@ export default function EventsPage() {
   }
 
   const inputClass =
-  "box-border h-[52px] w-full max-w-full min-w-0 appearance-none rounded-2xl border border-black/10 bg-[#fafafa] px-4 text-[16px] outline-none transition focus:border-[#d71920] focus:bg-white";
+    "box-border h-[52px] w-full max-w-full min-w-0 appearance-none rounded-2xl border border-black/10 bg-[#fafafa] px-4 text-[16px] outline-none transition focus:border-[#d71920] focus:bg-white";
 
   return (
     <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40 space-y-6 overflow-x-hidden">
+      {/* HEADER */}
       <div className="rounded-[28px] bg-[#111111] p-6 text-white shadow-[0_10px_30px_rgba(0,0,0,0.25)]">
         <h1 className="text-3xl font-extrabold tracking-tight">
           Semináre a akcie
         </h1>
       </div>
 
+      {/* FORM */}
       <form
         onSubmit={addEvent}
-        className="grid grid-cols-1 gap-3 overflow-hidden rounded-[26px] bg-white p-5 shadow-[0_8px_20px_rgba(0,0,0,0.08)] ring-1 ring-black/5 sm:grid-cols-2"
+        className="grid grid-cols-1 gap-3 overflow-hidden rounded-[26px] bg-white p-5 shadow-[0_8px_20px_rgba(0,0,0,0.08)] ring-1 ring-black/5"
       >
         <input
           name="name"
@@ -90,14 +92,23 @@ export default function EventsPage() {
           <option value="camp">Tábor</option>
         </select>
 
-        <input
-          type="date"
-          name="start_date"
-          className={inputClass}
-          required
-        />
+        {/* DATUMY VEDĽA SEBA */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-black/50">Dátum od</span>
+            <input
+              type="date"
+              name="start_date"
+              className={inputClass}
+              required
+            />
+          </div>
 
-        <input type="date" name="end_date" className={inputClass} />
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-black/50">Dátum do</span>
+            <input type="date" name="end_date" className={inputClass} />
+          </div>
+        </div>
 
         <select name="dojo_id" className={inputClass}>
           <option value="">Dojo</option>
@@ -126,11 +137,12 @@ export default function EventsPage() {
           ))}
         </select>
 
-        <button className="h-[54px] w-full rounded-2xl bg-[#d71920] px-4 text-[16px] font-bold text-white shadow-[0_6px_14px_rgba(215,25,32,0.25)] active:scale-[0.98] sm:col-span-2">
+        <button className="h-[54px] w-full rounded-2xl bg-[#d71920] px-4 text-[16px] font-bold text-white shadow-[0_6px_14px_rgba(215,25,32,0.25)] active:scale-[0.98]">
           + Vytvoriť akciu
         </button>
       </form>
 
+      {/* LIST */}
       <div className="rounded-[26px] bg-white p-5 shadow-[0_8px_20px_rgba(0,0,0,0.08)] ring-1 ring-black/5">
         <h2 className="mb-4 text-2xl font-extrabold tracking-tight">
           Zoznam akcií
@@ -147,7 +159,7 @@ export default function EventsPage() {
                 key={event.id}
                 className="rounded-2xl border border-black/10 bg-white p-4"
               >
-                <p className="text-lg font-extrabold leading-tight text-[#111]">
+                <p className="text-lg font-extrabold text-[#111]">
                   {event.name}
                 </p>
 
