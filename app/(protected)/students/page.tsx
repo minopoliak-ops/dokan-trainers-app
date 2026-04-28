@@ -59,16 +59,19 @@ export default function StudentsPage() {
           Pridať žiaka
         </Link>
 
-        <Link href="/students/import" className="flex items-center gap-3 rounded-3xl bg-white p-5 font-bold shadow-[0_8px_20px_rgba(0,0,0,0.08)] ring-1 ring-black/5 active:scale-[0.98]">
-          <Upload className="text-[#d71920]" />
-          Import CSV
-        </Link>
+        {permissions?.can_manage_trainers && (
+  <>
+    <Link href="/students/import" className="flex items-center gap-3 rounded-3xl bg-white p-5 font-bold shadow-[0_8px_20px_rgba(0,0,0,0.08)] ring-1 ring-black/5 active:scale-[0.98]">
+      <Upload className="text-[#d71920]" />
+      Import CSV
+    </Link>
 
-        <Link href="/students/export" className="flex items-center gap-3 rounded-3xl bg-white p-5 font-bold shadow-[0_8px_20px_rgba(0,0,0,0.08)] ring-1 ring-black/5 active:scale-[0.98]">
-          <Download className="text-[#d71920]" />
-          Export CSV
-        </Link>
-      </div>
+    <Link href="/students/export" className="flex items-center gap-3 rounded-3xl bg-white p-5 font-bold shadow-[0_8px_20px_rgba(0,0,0,0.08)] ring-1 ring-black/5 active:scale-[0.98]">
+      <Download className="text-[#d71920]" />
+      Export CSV
+    </Link>
+  </>
+)}
 
       {loading && (
         <div className="rounded-3xl bg-white p-5 text-black/60 shadow-sm">
