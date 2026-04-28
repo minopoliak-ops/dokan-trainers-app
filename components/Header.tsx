@@ -68,12 +68,12 @@ export default function Header({ email }: { email?: string }) {
             </Link>
 
             <button
-              onClick={logout}
-              className="hidden shrink-0 items-center gap-2 rounded-2xl bg-black px-4 py-2 text-sm font-semibold text-white active:scale-[0.98] sm:inline-flex"
-            >
-              <LogOut size={16} />
-              Odhlásiť
-            </button>
+  onClick={logout}
+  className="inline-flex shrink-0 items-center gap-2 rounded-2xl bg-black px-4 py-2 text-sm font-semibold text-white active:scale-[0.98]"
+>
+  <LogOut size={16} />
+  Odhlásiť
+</button>
           </div>
         </div>
       </header>
