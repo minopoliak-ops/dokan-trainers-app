@@ -3,7 +3,7 @@
 import { createClient } from "@/lib/supabase/browser";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -12,6 +12,12 @@ export default function LoginPage() {
   const [errorText, setErrorText] = useState("");
   const [debugText, setDebugText] = useState("");
   const [loading, setLoading] = useState(false);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setVisible(true), 100);
+    return () => clearTimeout(timer);
+  }, []);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -48,19 +54,31 @@ export default function LoginPage() {
 
       <form
         onSubmit={onSubmit}
-        className="relative z-10 w-full max-w-[380px] rounded-[26px] bg-white p-6 shadow-[0_10px_30px_rgba(0,0,0,0.08)]"
+        className={`relative z-10 w-full max-w-[380px] rounded-[26px] bg-white p-6 shadow-[0_10px_30px_rgba(0,0,0,0.08)] transition-all duration-500 ease-out ${
+          visible ? "translate-y-0 opacity-100" : "translate-y-6 opacity-0"
+        }`}
       >
         <div className="mb-7 flex items-center gap-4">
-          <Image
-            src="/logo.png"
-            alt="DOKAN logo"
-            width={52}
-            height={52}
-            className="rounded-2xl"
-            priority
-          />
+          <div
+            className={`transition-all delay-150 duration-500 ease-out ${
+              visible ? "scale-100 opacity-100" : "scale-90 opacity-0"
+            }`}
+          >
+            <Image
+              src="/logo.png"
+              alt="DOKAN logo"
+              width={52}
+              height={52}
+              className="rounded-2xl"
+              priority
+            />
+          </div>
 
-          <div>
+          <div
+            className={`transition-all delay-200 duration-500 ease-out ${
+              visible ? "translate-x-0 opacity-100" : "translate-x-3 opacity-0"
+            }`}
+          >
             <h1 className="text-[24px] font-extrabold leading-tight tracking-[-0.03em] text-[#111111]">
               Trénerská zóna
             </h1>
