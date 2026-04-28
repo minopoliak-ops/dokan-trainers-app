@@ -35,7 +35,7 @@ export default function Header({ email }: { email?: string }) {
     { label: "Dojo", href: "/dojos", Icon: Building2 },
     { label: "Žiaci", href: "/students", Icon: Users },
     { label: "Tréneri", href: "/trainers", Icon: Users },
-    { label: "Viac", href: "/topics", Icon: MoreHorizontal },
+    { label: "Viac", href: "/more", Icon: MoreHorizontal },
   ];
 
   return (
