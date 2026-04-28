@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">DOKAN Trénerská zóna</string>
+    <string name="title_activity_main">DOKAN Trénerská zóna</string>
+    <string name="package_name">sk.dokanbratislava.treneri</string>
+    <string name="custom_url_scheme">sk.dokanbratislava.treneri</string>
+</resources>
