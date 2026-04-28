@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 export default function DashboardPage() {
-  const { permissions, dojoIds } = usePermissions();
+  const { permissions } = usePermissions();
   const [dojos, setDojos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -17,30 +17,35 @@ export default function DashboardPage() {
 
       const supabase = createClient();
 
-      let query = supabase
-        .from("dojos")
-        .select("*, trainer_dojos(trainers(full_name))")
-        .order("name");
+      if (permissions.can_manage_trainers) {
+        const { data, error } = await supabase
+          .from("dojos")
+          .select("*, trainer_dojos(trainers(full_name))")
+          .order("name");
 
-      if (!permissions?.can_manage_trainers) {
-        if (dojoIds.length === 0) {
-          setDojos([]);
-          setLoading(false);
-          return;
-        }
-
-        query = query.in("id", dojoIds);
+        if (error) console.error(error);
+        setDojos(data || []);
+        setLoading(false);
+        return;
       }
 
-      const { data, error } = await query;
+      const { data, error } = await supabase
+        .from("trainer_dojos")
+        .select("dojos(id, name, address, trainer_dojos(trainers(full_name)))")
+        .eq("trainer_id", permissions.id);
 
       if (error) console.error(error);
-      setDojos(data || []);
+
+      const mapped = (data || [])
+        .map((item: any) => item.dojos)
+        .filter(Boolean);
+
+      setDojos(mapped);
       setLoading(false);
     }
 
     loadDojos();
-  }, [permissions, dojoIds]);
+  }, [permissions]);
 
   return (
     <div className="min-h-screen space-y-6 bg-[#f7f2e8] px-5 py-6 pb-40">
@@ -57,7 +62,10 @@ export default function DashboardPage() {
       {loading && (
         <div className="grid gap-5">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-32 animate-pulse rounded-3xl bg-white/60" />
+            <div
+              key={i}
+              className="h-32 animate-pulse rounded-3xl bg-white/60"
+            />
           ))}
         </div>
       )}
