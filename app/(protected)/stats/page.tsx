@@ -1,6 +1,7 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/browser";
+import { usePermissions } from "@/lib/usePermissions";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
@@ -72,7 +73,10 @@ function AttendanceGraph({
         </div>
       </div>
 
-      <svg viewBox={`0 0 ${chartWidth} 170`} className="mx-auto block w-full max-w-2xl">
+      <svg
+        viewBox={`0 0 ${chartWidth} 170`}
+        className="mx-auto block w-full max-w-2xl"
+      >
         <line x1="55" y1={bottomY} x2="370" y2={bottomY} stroke="#e5e5e5" />
         <line x1="55" y1={topY} x2="55" y2={bottomY} stroke="#e5e5e5" />
 
@@ -106,16 +110,40 @@ function AttendanceGraph({
         <circle cx={leftX} cy={newPresentY} r="5" fill="#16a34a" />
         <circle cx={rightX} cy={newAbsentY} r="5" fill="#16a34a" />
 
-        <text x={leftX} y={oldPresentY - 10} textAnchor="middle" fontSize="13" fill="#dc2626">
+        <text
+          x={leftX}
+          y={oldPresentY - 10}
+          textAnchor="middle"
+          fontSize="13"
+          fill="#dc2626"
+        >
           {oldMonth.present}
         </text>
-        <text x={rightX} y={oldAbsentY - 10} textAnchor="middle" fontSize="13" fill="#dc2626">
+        <text
+          x={rightX}
+          y={oldAbsentY - 10}
+          textAnchor="middle"
+          fontSize="13"
+          fill="#dc2626"
+        >
           {oldMonth.absent}
         </text>
-        <text x={leftX} y={newPresentY - 10} textAnchor="middle" fontSize="13" fill="#16a34a">
+        <text
+          x={leftX}
+          y={newPresentY - 10}
+          textAnchor="middle"
+          fontSize="13"
+          fill="#16a34a"
+        >
           {newMonth.present}
         </text>
-        <text x={rightX} y={newAbsentY - 10} textAnchor="middle" fontSize="13" fill="#16a34a">
+        <text
+          x={rightX}
+          y={newAbsentY - 10}
+          textAnchor="middle"
+          fontSize="13"
+          fill="#16a34a"
+        >
           {newMonth.absent}
         </text>
       </svg>
@@ -124,6 +152,9 @@ function AttendanceGraph({
 }
 
 export default function StatsPage() {
+  const { permissions } = usePermissions();
+  const isAdmin = !!permissions?.can_manage_trainers;
+
   const [dojos, setDojos] = useState<any[]>([]);
   const [students, setStudents] = useState<any[]>([]);
   const [trainings, setTrainings] = useState<any[]>([]);
@@ -135,30 +166,85 @@ export default function StatsPage() {
   const [selectedStudentId, setSelectedStudentId] = useState("");
 
   async function loadData() {
+    if (!permissions) return;
+
     const supabase = createClient();
 
-    const [
-      dojosResult,
-      studentsResult,
-      trainingsResult,
-      attendanceResult,
-      eventsResult,
-      eventAttendanceResult,
-    ] = await Promise.all([
-      supabase.from("dojos").select("*").order("name"),
-      supabase.from("students").select("*, dojos(name)").eq("active", true).order("last_name"),
-      supabase.from("trainings").select("*, dojos(name), training_topics(name)").order("training_date", { ascending: false }),
-      supabase.from("attendance").select("*"),
-      supabase.from("events").select("*, dojos(name), training_topics(name)").order("start_date", { ascending: false }),
-      supabase.from("event_attendance").select("*"),
-    ]);
+    let allowedDojoIds: string[] = [];
+
+    if (!isAdmin) {
+      const { data: links } = await supabase
+        .from("trainer_dojos")
+        .select("dojo_id")
+        .eq("trainer_id", permissions.id);
+
+      allowedDojoIds = (links || []).map((l: any) => l.dojo_id);
+
+      if (allowedDojoIds.length === 0) {
+        setDojos([]);
+        setStudents([]);
+        setTrainings([]);
+        setAttendance([]);
+        setEvents([]);
+        setEventAttendance([]);
+        return;
+      }
+    }
+
+    let dojosQuery = supabase.from("dojos").select("*").order("name");
+
+    let studentsQuery = supabase
+      .from("students")
+      .select("*, dojos(name)")
+      .eq("active", true)
+      .order("last_name");
+
+    let trainingsQuery = supabase
+      .from("trainings")
+      .select("*, dojos(name), training_topics(name)")
+      .order("training_date", { ascending: false });
+
+    let eventsQuery = supabase
+      .from("events")
+      .select("*, dojos(name), training_topics(name)")
+      .order("start_date", { ascending: false });
+
+    if (!isAdmin) {
+      dojosQuery = dojosQuery.in("id", allowedDojoIds);
+      studentsQuery = studentsQuery.in("dojo_id", allowedDojoIds);
+      trainingsQuery = trainingsQuery.in("dojo_id", allowedDojoIds);
+      eventsQuery = eventsQuery.in("dojo_id", allowedDojoIds);
+    }
+
+    const [dojosResult, studentsResult, trainingsResult, eventsResult] =
+      await Promise.all([dojosQuery, studentsQuery, trainingsQuery, eventsQuery]);
+
+    const trainingIds = (trainingsResult.data || []).map((t: any) => t.id);
+    const eventIds = (eventsResult.data || []).map((e: any) => e.id);
+
+    const attendanceResult =
+      trainingIds.length > 0
+        ? await supabase
+            .from("attendance")
+            .select("*")
+            .in("training_id", trainingIds)
+        : { data: [], error: null };
+
+    const eventAttendanceResult =
+      eventIds.length > 0
+        ? await supabase
+            .from("event_attendance")
+            .select("*")
+            .in("event_id", eventIds)
+        : { data: [], error: null };
 
     if (dojosResult.error) alert(dojosResult.error.message);
     if (studentsResult.error) alert(studentsResult.error.message);
     if (trainingsResult.error) alert(trainingsResult.error.message);
-    if (attendanceResult.error) alert(attendanceResult.error.message);
     if (eventsResult.error) console.error(eventsResult.error.message);
-    if (eventAttendanceResult.error) console.error(eventAttendanceResult.error.message);
+    if (attendanceResult.error) alert(attendanceResult.error.message);
+    if (eventAttendanceResult.error)
+      console.error(eventAttendanceResult.error.message);
 
     setDojos(dojosResult.data || []);
     setStudents(studentsResult.data || []);
@@ -170,7 +256,7 @@ export default function StatsPage() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [permissions]);
 
   const filteredStudents = useMemo(() => {
     if (!selectedDojoId) return students;
@@ -186,19 +272,23 @@ export default function StatsPage() {
         dojoTrainingIds.includes(a.training_id)
       );
 
-      const present = dojoAttendance.filter((a) => a.status === "present").length;
+      const present = dojoAttendance.filter(
+        (a) => a.status === "present"
+      ).length;
       const absent = dojoAttendance.filter((a) => a.status === "absent").length;
 
       const topics = new Set(
-        dojoTrainings
-          .map((t) => t.training_topics?.name)
-          .filter(Boolean)
+        dojoTrainings.map((t) => t.training_topics?.name).filter(Boolean)
       );
 
       const dojoEvents = events.filter((e) => e.dojo_id === dojo.id);
       const eventIds = dojoEvents.map((e) => e.id);
-      const eventAtt = eventAttendance.filter((a) => eventIds.includes(a.event_id));
-      const eventPresent = eventAtt.filter((a) => a.status === "present").length;
+      const eventAtt = eventAttendance.filter((a) =>
+        eventIds.includes(a.event_id)
+      );
+      const eventPresent = eventAtt.filter(
+        (a) => a.status === "present"
+      ).length;
 
       return {
         dojo,
@@ -226,7 +316,9 @@ export default function StatsPage() {
       }))
       .filter((a) => a.training)
       .sort((a, b) =>
-        String(b.training?.training_date).localeCompare(String(a.training?.training_date))
+        String(b.training?.training_date).localeCompare(
+          String(a.training?.training_date)
+        )
       );
   }, [attendance, trainings, selectedStudentId]);
 
@@ -245,13 +337,22 @@ export default function StatsPage() {
       );
   }, [eventAttendance, events, selectedStudentId]);
 
-  const presentCount = studentTrainingAttendance.filter((a) => a.status === "present").length;
-  const absentCount = studentTrainingAttendance.filter((a) => a.status === "absent").length;
+  const presentCount = studentTrainingAttendance.filter(
+    (a) => a.status === "present"
+  ).length;
+  const absentCount = studentTrainingAttendance.filter(
+    (a) => a.status === "absent"
+  ).length;
   const totalCount = studentTrainingAttendance.length;
-  const percent = totalCount > 0 ? Math.round((presentCount / totalCount) * 100) : 0;
+  const percent =
+    totalCount > 0 ? Math.round((presentCount / totalCount) * 100) : 0;
 
-  const eventPresentCount = studentEventAttendance.filter((a) => a.status === "present").length;
-  const eventAbsentCount = studentEventAttendance.filter((a) => a.status === "absent").length;
+  const eventPresentCount = studentEventAttendance.filter(
+    (a) => a.status === "present"
+  ).length;
+  const eventAbsentCount = studentEventAttendance.filter(
+    (a) => a.status === "absent"
+  ).length;
 
   const topicStats = useMemo(() => {
     const map: Record<string, { present: number; absent: number }> = {};
@@ -322,7 +423,9 @@ export default function StatsPage() {
       <div className="rounded-3xl bg-brand-black p-6 text-white shadow-lg">
         <h1 className="text-3xl font-bold">Štatistiky</h1>
         <p className="mt-2 text-white/70">
-          Dojo, návštevnosť, témy, tréningy, semináre a tábory.
+          {isAdmin
+            ? "Dojo, návštevnosť, témy, tréningy, semináre a tábory."
+            : "Štatistiky iba pre tvoje priradené dojo."}
         </p>
       </div>
 
@@ -365,17 +468,32 @@ export default function StatsPage() {
         {dojoStats
           .filter((stat) => !selectedDojoId || stat.dojo.id === selectedDojoId)
           .map((stat) => (
-            <div key={stat.dojo.id} className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
+            <div
+              key={stat.dojo.id}
+              className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10"
+            >
               <p className="text-black/60">Dojo</p>
               <h2 className="text-xl font-bold">{stat.dojo.name}</h2>
 
               <div className="mt-4 grid gap-2 text-sm">
-                <p>Tréningy: <b>{stat.trainingsCount}</b></p>
-                <p className="text-green-700">Prítomnosti: <b>{stat.present}</b></p>
-                <p className="text-red-700">Neprítomnosti: <b>{stat.absent}</b></p>
-                <p>Prebrané témy: <b>{stat.topicsCount}</b></p>
-                <p>Semináre/tábory: <b>{stat.eventsCount}</b></p>
-                <p>Účasť semináre/tábory: <b>{stat.eventPresent}</b></p>
+                <p>
+                  Tréningy: <b>{stat.trainingsCount}</b>
+                </p>
+                <p className="text-green-700">
+                  Prítomnosti: <b>{stat.present}</b>
+                </p>
+                <p className="text-red-700">
+                  Neprítomnosti: <b>{stat.absent}</b>
+                </p>
+                <p>
+                  Prebrané témy: <b>{stat.topicsCount}</b>
+                </p>
+                <p>
+                  Semináre/tábory: <b>{stat.eventsCount}</b>
+                </p>
+                <p>
+                  Účasť semináre/tábory: <b>{stat.eventPresent}</b>
+                </p>
               </div>
             </div>
           ))}
@@ -390,18 +508,23 @@ export default function StatsPage() {
                 {selectedStudent.first_name} {selectedStudent.last_name}
               </h2>
               <p className="text-black/60">
-                {selectedStudent.technical_grade || "Bez stupňa"} · {selectedStudent.dojos?.name}
+                {selectedStudent.technical_grade || "Bez stupňa"} ·{" "}
+                {selectedStudent.dojos?.name}
               </p>
             </div>
 
             <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
               <p className="text-black/60">Tréningy prítomný</p>
-              <h2 className="text-4xl font-black text-green-700">{presentCount}</h2>
+              <h2 className="text-4xl font-black text-green-700">
+                {presentCount}
+              </h2>
             </div>
 
             <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
               <p className="text-black/60">Tréningy neprítomný</p>
-              <h2 className="text-4xl font-black text-red-700">{absentCount}</h2>
+              <h2 className="text-4xl font-black text-red-700">
+                {absentCount}
+              </h2>
             </div>
 
             <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
@@ -426,10 +549,17 @@ export default function StatsPage() {
               ) : (
                 <div className="grid gap-3">
                   {topicStats.map(([topic, stat]) => (
-                    <div key={topic} className="rounded-2xl border border-black/10 p-4">
+                    <div
+                      key={topic}
+                      className="rounded-2xl border border-black/10 p-4"
+                    >
                       <p className="text-lg font-bold">{topic}</p>
-                      <p className="text-green-700">Prítomný: {stat.present}</p>
-                      <p className="text-red-700">Neprítomný: {stat.absent}</p>
+                      <p className="text-green-700">
+                        Prítomný: {stat.present}
+                      </p>
+                      <p className="text-red-700">
+                        Neprítomný: {stat.absent}
+                      </p>
                     </div>
                   ))}
                 </div>
@@ -442,11 +572,15 @@ export default function StatsPage() {
               <div className="mb-4 grid gap-3 md:grid-cols-2">
                 <div className="rounded-2xl bg-green-50 p-4">
                   <p className="font-bold text-green-800">Prítomný</p>
-                  <p className="text-3xl font-black text-green-700">{eventPresentCount}</p>
+                  <p className="text-3xl font-black text-green-700">
+                    {eventPresentCount}
+                  </p>
                 </div>
                 <div className="rounded-2xl bg-red-50 p-4">
                   <p className="font-bold text-red-800">Neprítomný</p>
-                  <p className="text-3xl font-black text-red-700">{eventAbsentCount}</p>
+                  <p className="text-3xl font-black text-red-700">
+                    {eventAbsentCount}
+                  </p>
                 </div>
               </div>
 
@@ -455,10 +589,17 @@ export default function StatsPage() {
               ) : (
                 <div className="grid gap-3">
                   {eventTypeStats.map(([type, stat]) => (
-                    <div key={type} className="rounded-2xl border border-black/10 p-4">
+                    <div
+                      key={type}
+                      className="rounded-2xl border border-black/10 p-4"
+                    >
                       <p className="font-bold">{type}</p>
-                      <p className="text-green-700">Prítomný: {stat.present}</p>
-                      <p className="text-red-700">Neprítomný: {stat.absent}</p>
+                      <p className="text-green-700">
+                        Prítomný: {stat.present}
+                      </p>
+                      <p className="text-red-700">
+                        Neprítomný: {stat.absent}
+                      </p>
                     </div>
                   ))}
                 </div>
@@ -504,7 +645,9 @@ export default function StatsPage() {
           </div>
 
           <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
-            <h2 className="mb-4 text-2xl font-bold">História seminárov a táborov</h2>
+            <h2 className="mb-4 text-2xl font-bold">
+              História seminárov a táborov
+            </h2>
 
             <div className="grid gap-3">
               {studentEventAttendance.length === 0 ? (
@@ -520,8 +663,9 @@ export default function StatsPage() {
                         {item.event?.start_date} — {item.event?.name}
                       </p>
                       <p className="text-black/60">
-                        {eventTypeLabels[item.event?.event_type] || item.event?.event_type} ·{" "}
-                        {item.event?.dojos?.name || "Bez dojo"} ·{" "}
+                        {eventTypeLabels[item.event?.event_type] ||
+                          item.event?.event_type}{" "}
+                        · {item.event?.dojos?.name || "Bez dojo"} ·{" "}
                         {item.event?.training_topics?.name || "Bez témy"}
                       </p>
                     </div>
@@ -542,11 +686,11 @@ export default function StatsPage() {
           </div>
 
           <Link
-  href={`/students/${selectedStudent.id}`}
-  className="inline-flex w-full items-center justify-center rounded-2xl bg-[#d71920] px-4 py-4 text-center font-bold text-white shadow-[0_6px_14px_rgba(215,25,32,0.25)] active:scale-[0.98]"
->
-  Otvoriť profil cvičiaceho
-</Link>
+            href={`/students/${selectedStudent.id}`}
+            className="inline-flex w-full items-center justify-center rounded-2xl bg-[#d71920] px-4 py-4 text-center font-bold text-white shadow-[0_6px_14px_rgba(215,25,32,0.25)] active:scale-[0.98]"
+          >
+            Otvoriť profil cvičiaceho
+          </Link>
         </>
       )}
     </div>
