@@ -22,7 +22,7 @@ export default function LoginPage() {
     try {
       const supabase = createClient();
 
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const { error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
       });
@@ -43,45 +43,56 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-brand-cream">
+    <main className="flex min-h-screen items-center justify-center bg-[#f7f2e8] px-5 py-10">
       <form
         onSubmit={onSubmit}
-        className="w-full max-w-md rounded-3xl bg-white p-8 shadow-xl"
+        className="w-full max-w-[390px] rounded-[28px] bg-white/95 p-7 shadow-[0_18px_45px_rgba(0,0,0,0.10)]"
       >
-        <div className="mb-6 flex items-center gap-3">
+        <div className="mb-7 flex items-center gap-4">
           <Image
             src="/logo.png"
             alt="DOKAN logo"
-            width={50}
-            height={50}
-            className="rounded-xl"
+            width={54}
+            height={54}
+            className="rounded-2xl"
+            priority
           />
           <div>
-            <h1 className="text-2xl font-bold">Trénerská zóna</h1>
-            <p className="text-sm text-black/60">DOKAN Bratislava</p>
+            <h1 className="text-[28px] font-extrabold leading-tight tracking-[-0.03em] text-[#111111]">
+              Trénerská zóna
+            </h1>
+            <p className="mt-1 text-[15px] font-medium text-black/55">
+              DOKAN Bratislava
+            </p>
           </div>
         </div>
 
-        <label className="mb-2 block text-sm font-medium">Email</label>
+        <label className="mb-2 block text-[15px] font-semibold text-[#111111]">
+          Email
+        </label>
         <input
-          className="mb-4 w-full rounded-xl border border-black/10 px-4 py-3"
+          className="mb-5 h-[54px] w-full rounded-2xl border border-black/10 bg-white px-4 text-[17px] outline-none transition focus:border-[#d71920] focus:ring-4 focus:ring-[#d71920]/10"
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
+          autoComplete="email"
           required
         />
 
-        <label className="mb-2 block text-sm font-medium">Heslo</label>
+        <label className="mb-2 block text-[15px] font-semibold text-[#111111]">
+          Heslo
+        </label>
         <input
-          className="mb-4 w-full rounded-xl border border-black/10 px-4 py-3"
+          className="mb-5 h-[54px] w-full rounded-2xl border border-black/10 bg-white px-4 text-[17px] outline-none transition focus:border-[#d71920] focus:ring-4 focus:ring-[#d71920]/10"
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
+          autoComplete="current-password"
           required
         />
 
         {errorText && (
-          <div className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">
+          <div className="mb-5 rounded-2xl bg-red-50 p-3 text-sm text-red-700">
             <p className="font-bold">{errorText}</p>
             {debugText && (
               <p className="mt-2 text-xs text-red-500">{debugText}</p>
@@ -91,7 +102,7 @@ export default function LoginPage() {
 
         <button
           disabled={loading}
-          className="w-full rounded-xl bg-brand-red px-4 py-3 text-white font-semibold"
+          className="h-[54px] w-full rounded-2xl bg-[#d71920] px-4 text-[17px] font-bold text-white shadow-sm transition active:scale-[0.99] disabled:opacity-70"
         >
           {loading ? "Prihlasujem..." : "Prihlásiť sa"}
         </button>
