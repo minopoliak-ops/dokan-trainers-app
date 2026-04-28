@@ -318,7 +318,7 @@ export default function StatsPage() {
   }, [studentTrainingAttendance]);
 
   return (
-    <div className="space-y-6">
+    <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40 space-y-6">
       <div className="rounded-3xl bg-brand-black p-6 text-white shadow-lg">
         <h1 className="text-3xl font-bold">Štatistiky</h1>
         <p className="mt-2 text-white/70">
@@ -542,11 +542,11 @@ export default function StatsPage() {
           </div>
 
           <Link
-            href={`/students/${selectedStudent.id}`}
-            className="inline-block rounded-xl bg-brand-red px-4 py-3 font-bold text-white"
-          >
-            Otvoriť profil cvičiaceho
-          </Link>
+  href={`/students/${selectedStudent.id}`}
+  className="inline-flex w-full items-center justify-center rounded-2xl bg-[#d71920] px-4 py-4 text-center font-bold text-white shadow-[0_6px_14px_rgba(215,25,32,0.25)] active:scale-[0.98]"
+>
+  Otvoriť profil cvičiaceho
+</Link>
         </>
       )}
     </div>

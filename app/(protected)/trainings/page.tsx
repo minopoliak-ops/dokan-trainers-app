@@ -28,7 +28,7 @@ export default function TrainingsPage() {
   }, []);
 
   return (
-    <div className="space-y-6">
+    <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40 space-y-6">
       <div className="rounded-3xl bg-brand-black p-6 text-white shadow-lg">
         <h1 className="text-3xl font-bold">Tréningy</h1>
         <p className="mt-2 text-white/70">

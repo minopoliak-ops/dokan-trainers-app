@@ -24,7 +24,7 @@ export default function DashboardPage() {
   }, []);
 
   return (
-    <div className="min-h-screen space-y-6 bg-[#f7f2e8] px-5 py-6 pb-28">
+    <div className="min-h-screen space-y-6 bg-[#f7f2e8] px-5 py-6 pb-40">
       <div className="rounded-[28px] bg-[#111111] p-6 text-white shadow-[0_10px_30px_rgba(0,0,0,0.25)]">
         <p className="text-sm text-white/60">DOKAN Bratislava</p>
         <h1 className="mt-1 text-3xl font-extrabold tracking-tight">

@@ -67,7 +67,7 @@ export default function EventsPage() {
     "h-[52px] w-full min-w-0 rounded-2xl border border-black/10 bg-[#fafafa] px-4 text-[16px] outline-none transition focus:border-[#d71920] focus:bg-white";
 
   return (
-    <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-28 space-y-6 overflow-x-hidden">
+    <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40 space-y-6 overflow-x-hidden">
       <div className="rounded-[28px] bg-[#111111] p-6 text-white shadow-[0_10px_30px_rgba(0,0,0,0.25)]">
         <h1 className="text-3xl font-extrabold tracking-tight">
           Semináre a akcie

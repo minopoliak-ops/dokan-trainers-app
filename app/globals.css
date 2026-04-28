@@ -5,6 +5,9 @@
 body {
   background: #f7f2e8;
   color: #111111;
+
+  /* 👇 PRIDAJ SEM */
+  padding-bottom: 120px;
 }
 
 /* SAFE AREA pre iPhone notch */
@@ -14,4 +17,9 @@ body {
 
 .pb-safe {
   padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* 👇 PRIDAJ NA KONIEC */
+.safe-bottom-space {
+  padding-bottom: 120px;
 }
