@@ -114,7 +114,7 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
   }
 
   const inputClass =
-    "h-[52px] w-full rounded-2xl border border-black/10 bg-[#fafafa] px-4 text-[16px] outline-none focus:border-[#d71920] focus:bg-white";
+  "box-border h-[52px] w-full max-w-full min-w-0 appearance-none rounded-2xl border border-black/10 bg-[#fafafa] px-4 text-[16px] outline-none focus:border-[#d71920] focus:bg-white";
 
   const textAreaClass =
     "min-h-[110px] w-full rounded-2xl border border-black/10 bg-[#fafafa] px-4 py-3 text-[16px] outline-none focus:border-[#d71920] focus:bg-white";
@@ -191,20 +191,22 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
           </select>
 
           <input
-            className={inputClass}
-            placeholder="Technický stupeň"
-            value={student.technical_grade || ""}
-            disabled={!canEdit}
-            onChange={(e) => updateField("technical_grade", e.target.value)}
-          />
+  className={inputClass}
+  placeholder="Technický stupeň"
+  value={student.technical_grade || ""}
+  disabled={!canEdit}
+  onChange={(e) => updateField("technical_grade", e.target.value)}
+/>
 
-          <input
-            className={inputClass}
-            type="date"
-            value={student.last_grading_date || ""}
-            disabled={!canEdit}
-            onChange={(e) => updateField("last_grading_date", e.target.value)}
-          />
+<div className="w-full min-w-0 overflow-hidden">
+  <input
+    type="date"
+    className={inputClass}
+    value={student.last_grading_date || ""}
+    disabled={!canEdit}
+    onChange={(e) => updateField("last_grading_date", e.target.value)}
+  />
+</div>
 
           <input
             className={inputClass}
