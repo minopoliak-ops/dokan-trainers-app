@@ -88,9 +88,13 @@ export default function EventsPage() {
         />
 
         <select name="type" className={inputClass}>
-          <option value="seminar">Seminár</option>
-          <option value="camp">Tábor</option>
-        </select>
+  <option value="kids_seminar">Detský seminár</option>
+  <option value="older_seminar">Seminár pre starších</option>
+  <option value="day_camp">Denný tábor</option>
+  <option value="sleepover_camp_1">Prespávací tábor 1</option>
+  <option value="sleepover_camp_2">Prespávací tábor 2</option>
+  <option value="training">Tréning</option>
+</select>
 
         {/* DATUMY VEDĽA SEBA */}
         <div className="grid grid-cols-2 gap-3">
