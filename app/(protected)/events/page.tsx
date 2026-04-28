@@ -64,7 +64,7 @@ export default function EventsPage() {
   }
 
   const inputClass =
-    "h-[52px] w-full min-w-0 rounded-2xl border border-black/10 bg-[#fafafa] px-4 text-[16px] outline-none transition focus:border-[#d71920] focus:bg-white";
+  "box-border h-[52px] w-full max-w-full min-w-0 appearance-none rounded-2xl border border-black/10 bg-[#fafafa] px-4 text-[16px] outline-none transition focus:border-[#d71920] focus:bg-white";
 
   return (
     <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40 space-y-6 overflow-x-hidden">
@@ -76,7 +76,7 @@ export default function EventsPage() {
 
       <form
         onSubmit={addEvent}
-        className="grid grid-cols-1 gap-3 rounded-[26px] bg-white p-5 shadow-[0_8px_20px_rgba(0,0,0,0.08)] ring-1 ring-black/5 sm:grid-cols-2"
+        className="grid grid-cols-1 gap-3 overflow-hidden rounded-[26px] bg-white p-5 shadow-[0_8px_20px_rgba(0,0,0,0.08)] ring-1 ring-black/5 sm:grid-cols-2"
       >
         <input
           name="name"
