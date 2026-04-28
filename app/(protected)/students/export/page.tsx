@@ -31,7 +31,7 @@ export default function Page() {
         headers
           .map((header) => {
             const value = row[header] ?? "";
-            return `"${String(value).replaceAll('"', '""')}"`;
+            return `"${String(value).replace(/"/g, '""')}"`;
           })
           .join(",")
       ),
