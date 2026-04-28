@@ -8,20 +8,24 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "DOKAN"
+    title: "DOKAN",
   },
   icons: {
     icon: "/logo.png",
-    apple: "/logo.png"
-  }
+    apple: "/logo.png",
+  },
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="sk">
-  <body style={{ backgroundColor: "#f5f0e6", margin: 0 }}>
-    {children}
-  </body>
-</html>
+      <body className="min-h-screen bg-[#f5f0e6]">
+        {children}
+      </body>
+    </html>
   );
 }

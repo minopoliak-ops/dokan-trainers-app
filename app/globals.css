@@ -6,3 +6,12 @@ body {
   background: #f7f2e8;
   color: #111111;
 }
+
+/* SAFE AREA pre iPhone notch */
+.pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
