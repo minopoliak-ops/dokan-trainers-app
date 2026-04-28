@@ -43,25 +43,28 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#f7f2e8] px-5 py-10">
+    <main className="relative flex min-h-screen items-start justify-center overflow-hidden bg-[#f7f2e8] px-5 pt-24">
+      <div className="pointer-events-none absolute left-0 right-0 top-0 h-40 bg-gradient-to-b from-black/[0.04] to-transparent" />
+
       <form
         onSubmit={onSubmit}
-        className="w-full max-w-[390px] rounded-[28px] bg-white/95 p-7 shadow-[0_18px_45px_rgba(0,0,0,0.10)]"
+        className="relative z-10 w-full max-w-[380px] rounded-[26px] bg-white p-6 shadow-[0_10px_30px_rgba(0,0,0,0.08)]"
       >
         <div className="mb-7 flex items-center gap-4">
           <Image
             src="/logo.png"
             alt="DOKAN logo"
-            width={54}
-            height={54}
+            width={52}
+            height={52}
             className="rounded-2xl"
             priority
           />
+
           <div>
-            <h1 className="text-[28px] font-extrabold leading-tight tracking-[-0.03em] text-[#111111]">
+            <h1 className="text-[24px] font-extrabold leading-tight tracking-[-0.03em] text-[#111111]">
               Trénerská zóna
             </h1>
-            <p className="mt-1 text-[15px] font-medium text-black/55">
+            <p className="mt-1 text-[14px] font-medium text-black/50">
               DOKAN Bratislava
             </p>
           </div>
@@ -71,7 +74,7 @@ export default function LoginPage() {
           Email
         </label>
         <input
-          className="mb-5 h-[54px] w-full rounded-2xl border border-black/10 bg-white px-4 text-[17px] outline-none transition focus:border-[#d71920] focus:ring-4 focus:ring-[#d71920]/10"
+          className="mb-5 h-[52px] w-full rounded-2xl border border-black/10 bg-[#fafafa] px-4 text-[16px] outline-none transition focus:border-[#d71920] focus:bg-white"
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
@@ -83,7 +86,7 @@ export default function LoginPage() {
           Heslo
         </label>
         <input
-          className="mb-5 h-[54px] w-full rounded-2xl border border-black/10 bg-white px-4 text-[17px] outline-none transition focus:border-[#d71920] focus:ring-4 focus:ring-[#d71920]/10"
+          className="mb-5 h-[52px] w-full rounded-2xl border border-black/10 bg-[#fafafa] px-4 text-[16px] outline-none transition focus:border-[#d71920] focus:bg-white"
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
@@ -102,7 +105,7 @@ export default function LoginPage() {
 
         <button
           disabled={loading}
-          className="h-[54px] w-full rounded-2xl bg-[#d71920] px-4 text-[17px] font-bold text-white shadow-sm transition active:scale-[0.99] disabled:opacity-70"
+          className="h-[52px] w-full rounded-2xl bg-[#d71920] text-[16px] font-bold text-white shadow-[0_6px_14px_rgba(215,25,32,0.3)] transition active:scale-[0.98] disabled:opacity-70"
         >
           {loading ? "Prihlasujem..." : "Prihlásiť sa"}
         </button>
