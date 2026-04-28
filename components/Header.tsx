@@ -40,45 +40,51 @@ export default function Header({ email }: { email?: string }) {
 
   return (
     <>
-      <header className="sticky top-0 z-50 border-b border-black/10 bg-[#f7f2e8]/95 pt-[54px] backdrop-blur shadow-[0_4px_20px_rgba(0,0,0,0.05)]">
-        <div className="mx-auto max-w-7xl px-5 pb-4 pt-4">
-          <div className="flex items-center justify-between gap-4">
-            <Link href="/dashboard" className="flex min-w-0 items-center gap-4">
+      {/* HEADER */}
+      <header className="sticky top-0 z-50 border-b border-black/10 bg-[#f7f2e8]/95 pt-safe backdrop-blur">
+        <div className="mx-auto max-w-7xl px-5 pb-3 pt-2">
+          <div className="flex items-center justify-between gap-3">
+            {/* LOGO + TEXT */}
+            <Link href="/dashboard" className="flex items-center gap-3">
               <Image
                 src="/logo.png"
                 alt="DOKAN Bratislava"
-                width={64}
-                height={64}
-                className="rounded-full object-cover shadow-sm"
+                width={52}
+                height={52}
+                className="rounded-full object-cover"
                 priority
               />
 
-              <div className="min-w-0">
-                <p className="truncate text-[24px] font-extrabold leading-tight tracking-[-0.04em] text-[#111]">
+              <div className="leading-tight">
+                <p className="text-[20px] font-extrabold tracking-[-0.02em] text-[#111]">
                   DOKAN{" "}
-                  <span className="text-[#d71920]">Trénerská zóna</span>
+                  <span className="text-[#d71920]">
+                    Trénerská zóna
+                  </span>
                 </p>
 
                 {email && (
-                  <p className="mt-1 truncate text-sm text-black/45">
+                  <p className="text-xs text-black/45 truncate">
                     {email}
                   </p>
                 )}
               </div>
             </Link>
 
+            {/* LOGOUT */}
             <button
-  onClick={logout}
-  className="inline-flex shrink-0 items-center gap-2 rounded-2xl bg-black px-4 py-2 text-sm font-semibold text-white active:scale-[0.98]"
->
-  <LogOut size={16} />
-  Odhlásiť
-</button>
+              onClick={logout}
+              className="inline-flex items-center gap-2 rounded-2xl bg-black px-4 py-2 text-sm font-semibold text-white active:scale-[0.97]"
+            >
+              <LogOut size={16} />
+              Odhlásiť
+            </button>
           </div>
         </div>
       </header>
 
-      <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-black/10 bg-white/95 px-3 pb-safe pt-2 backdrop-blur shadow-[0_-6px_24px_rgba(0,0,0,0.08)]">
+      {/* BOTTOM MENU */}
+      <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-black/10 bg-white/95 px-3 pb-safe pt-2 backdrop-blur">
         <div className="mx-auto grid max-w-md grid-cols-5 gap-1">
           {bottomMenu.map(({ label, href, Icon }) => {
             const active =
@@ -94,7 +100,7 @@ export default function Header({ email }: { email?: string }) {
                   active ? "bg-[#111] text-white" : "text-black/55"
                 }`}
               >
-                <Icon size={21} />
+                <Icon size={20} />
                 <span className="mt-1">{label}</span>
               </Link>
             );
