@@ -21,56 +21,73 @@ export default function EmailsPage() {
     "Dobrý deň,\n\nposielame informáciu z tréningovej zóny DOKAN Bratislava.\n\nS pozdravom,\nDOKAN Bratislava"
   );
 
-  async function loadData() {
-    if (!permissions) return;
+  aasync function loadData() {
+  const supabase = createClient();
 
-    const supabase = createClient();
+  const { data: userData } = await supabase.auth.getUser();
+  const email = userData.user?.email;
 
-    let allowedDojoIds: string[] = [];
+  if (!email) return;
 
-    if (!isAdmin) {
-      const { data: links } = await supabase
-        .from("trainer_dojos")
-        .select("dojo_id")
-        .eq("trainer_id", permissions.id);
+  const { data: trainer } = await supabase
+    .from("trainers")
+    .select("*")
+    .eq("email", email)
+    .single();
 
-      allowedDojoIds = (links || []).map((l: any) => l.dojo_id);
-
-      if (allowedDojoIds.length === 0) {
-        setDojos([]);
-        setStudents([]);
-        return;
-      }
-    }
-
-    let dojosQuery = supabase.from("dojos").select("*").order("name");
-
-    let studentsQuery = supabase
-      .from("students")
-      .select("*, dojos(name)")
-      .eq("active", true)
-      .order("last_name");
-
-    if (!isAdmin) {
-      dojosQuery = dojosQuery.in("id", allowedDojoIds);
-      studentsQuery = studentsQuery.in("dojo_id", allowedDojoIds);
-    }
-
-    const [dojosRes, studentsRes] = await Promise.all([
-      dojosQuery,
-      studentsQuery,
-    ]);
-
-    if (dojosRes.error) alert(dojosRes.error.message);
-    if (studentsRes.error) alert(studentsRes.error.message);
-
-    setDojos(dojosRes.data || []);
-    setStudents(studentsRes.data || []);
+  if (!trainer) {
+    setDojos([]);
+    setStudents([]);
+    return;
   }
 
+  const isAdminUser = !!trainer.can_manage_trainers;
+
+  let allowedDojoIds: string[] = [];
+
+  if (!isAdminUser) {
+    const { data: links } = await supabase
+      .from("trainer_dojos")
+      .select("dojo_id")
+      .eq("trainer_id", trainer.id);
+
+    allowedDojoIds = (links || []).map((l: any) => l.dojo_id);
+
+    if (allowedDojoIds.length === 0) {
+      setDojos([]);
+      setStudents([]);
+      return;
+    }
+  }
+
+  let dojosQuery = supabase.from("dojos").select("*").order("name");
+
+  let studentsQuery = supabase
+    .from("students")
+    .select("*, dojos(name)")
+    .eq("active", true)
+    .order("last_name");
+
+  if (!isAdminUser) {
+    dojosQuery = dojosQuery.in("id", allowedDojoIds);
+    studentsQuery = studentsQuery.in("dojo_id", allowedDojoIds);
+  }
+
+  const [dojosRes, studentsRes] = await Promise.all([
+    dojosQuery,
+    studentsQuery,
+  ]);
+
+  if (dojosRes.error) alert(dojosRes.error.message);
+  if (studentsRes.error) alert(studentsRes.error.message);
+
+  setDojos(dojosRes.data || []);
+  setStudents(studentsRes.data || []);
+}
+
   useEffect(() => {
-    loadData();
-  }, [permissions]);
+  loadData();
+}, []);
 
   const recipients = useMemo(() => {
     if (target === "student") {
