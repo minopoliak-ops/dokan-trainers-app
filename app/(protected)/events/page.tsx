@@ -41,7 +41,7 @@ export default function EventsPage() {
 
     const { error } = await supabase.from("events").insert({
       name: form.get("name"),
-      type: form.get("type"),
+      event_type: form.get("type"),
       start_date: form.get("start_date"),
       end_date: form.get("end_date") || null,
       dojo_id: form.get("dojo_id") || null,
