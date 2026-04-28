@@ -24,19 +24,17 @@ export default function DashboardPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 space-y-6">
-      {/* HEADER */}
+    <div className="min-h-screen space-y-6 bg-[#f7f2e8] px-5 py-6 pb-28">
       <div className="rounded-[28px] bg-[#111111] p-6 text-white shadow-[0_10px_30px_rgba(0,0,0,0.25)]">
         <p className="text-sm text-white/60">DOKAN Bratislava</p>
         <h1 className="mt-1 text-3xl font-extrabold tracking-tight">
           Moje dojo
         </h1>
-        <p className="mt-2 text-white/70 text-sm">
+        <p className="mt-2 text-sm text-white/70">
           Vyber telocvičňu a pokračuj
         </p>
       </div>
 
-      {/* LOADING SKELETON */}
       {loading && (
         <div className="grid gap-5">
           {[1, 2, 3].map((i) => (
@@ -48,22 +46,20 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* EMPTY STATE */}
       {!loading && dojos.length === 0 && (
         <div className="rounded-3xl bg-white p-6 text-center shadow-sm">
           Nemáš priradené žiadne dojo.
         </div>
       )}
 
-      {/* DOJOS */}
       <div className="grid gap-5">
         {dojos.map((dojo, i) => (
           <Link
             key={dojo.id}
             href={`/dojos/${dojo.id}`}
-            className="group rounded-[26px] bg-white p-6 shadow-[0_8px_20px_rgba(0,0,0,0.08)] ring-1 ring-black/5 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_12px_28px_rgba(0,0,0,0.12)]"
+            className="group rounded-[26px] bg-white p-6 shadow-[0_8px_20px_rgba(0,0,0,0.08)] ring-1 ring-black/5 transition-all duration-300 active:scale-[0.98] hover:-translate-y-1 hover:shadow-[0_12px_28px_rgba(0,0,0,0.12)]"
             style={{
-              animation: `fadeUp 0.4s ease forwards`,
+              animation: "fadeUp 0.4s ease forwards",
               animationDelay: `${i * 0.05}s`,
               opacity: 0,
             }}
@@ -72,13 +68,9 @@ export default function DashboardPage() {
               <Building2 size={26} />
             </div>
 
-            <h2 className="text-xl font-bold text-[#111]">
-              {dojo.name}
-            </h2>
+            <h2 className="text-xl font-bold text-[#111]">{dojo.name}</h2>
 
-            <p className="mt-1 text-sm text-black/60">
-              {dojo.address}
-            </p>
+            <p className="mt-1 text-sm text-black/60">{dojo.address}</p>
 
             <div className="mt-5 flex gap-4 text-sm font-semibold text-black/70">
               <span className="inline-flex items-center gap-1">
@@ -92,7 +84,6 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* ANIMATION */}
       <style jsx>{`
         @keyframes fadeUp {
           from {
