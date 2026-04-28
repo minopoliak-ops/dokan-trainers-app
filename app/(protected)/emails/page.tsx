@@ -1,10 +1,14 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/browser";
+import { usePermissions } from "@/lib/usePermissions";
 import { Copy, Mail, MessageCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 export default function EmailsPage() {
+  const { permissions } = usePermissions();
+  const isAdmin = !!permissions?.can_manage_trainers;
+
   const [dojos, setDojos] = useState<any[]>([]);
   const [students, setStudents] = useState<any[]>([]);
   const [selectedDojoId, setSelectedDojoId] = useState("");
@@ -18,15 +22,47 @@ export default function EmailsPage() {
   );
 
   async function loadData() {
+    if (!permissions) return;
+
     const supabase = createClient();
 
-    const dojosRes = await supabase.from("dojos").select("*").order("name");
+    let allowedDojoIds: string[] = [];
 
-    const studentsRes = await supabase
+    if (!isAdmin) {
+      const { data: links } = await supabase
+        .from("trainer_dojos")
+        .select("dojo_id")
+        .eq("trainer_id", permissions.id);
+
+      allowedDojoIds = (links || []).map((l: any) => l.dojo_id);
+
+      if (allowedDojoIds.length === 0) {
+        setDojos([]);
+        setStudents([]);
+        return;
+      }
+    }
+
+    let dojosQuery = supabase.from("dojos").select("*").order("name");
+
+    let studentsQuery = supabase
       .from("students")
       .select("*, dojos(name)")
       .eq("active", true)
       .order("last_name");
+
+    if (!isAdmin) {
+      dojosQuery = dojosQuery.in("id", allowedDojoIds);
+      studentsQuery = studentsQuery.in("dojo_id", allowedDojoIds);
+    }
+
+    const [dojosRes, studentsRes] = await Promise.all([
+      dojosQuery,
+      studentsQuery,
+    ]);
+
+    if (dojosRes.error) alert(dojosRes.error.message);
+    if (studentsRes.error) alert(studentsRes.error.message);
 
     setDojos(dojosRes.data || []);
     setStudents(studentsRes.data || []);
@@ -34,7 +70,7 @@ export default function EmailsPage() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [permissions]);
 
   const recipients = useMemo(() => {
     if (target === "student") {
@@ -115,7 +151,9 @@ export default function EmailsPage() {
           >
             <option value="student">Jednotlivec</option>
             <option value="dojo">Celé dojo</option>
-            <option value="all">Všetky dojo</option>
+            <option value="all">
+              {isAdmin ? "Všetky dojo" : "Všetky moje dojo"}
+            </option>
           </select>
 
           {target === "student" && (
@@ -150,7 +188,7 @@ export default function EmailsPage() {
 
           {target === "all" && (
             <div className="rounded-xl bg-brand-cream px-4 py-3 md:col-span-2">
-              Vybrané: všetky dojo
+              Vybrané: {isAdmin ? "všetky dojo" : "všetky moje dojo"}
             </div>
           )}
         </div>
@@ -208,7 +246,8 @@ export default function EmailsPage() {
 
         {mode === "html" && (
           <p className="mt-2 text-sm text-black/60">
-            HTML kód je vytvorený automaticky z textu. Skopíruješ ho tlačidlom nižšie.
+            HTML kód je vytvorený automaticky z textu. Skopíruješ ho tlačidlom
+            nižšie.
           </p>
         )}
       </div>
