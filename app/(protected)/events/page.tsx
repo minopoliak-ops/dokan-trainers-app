@@ -40,14 +40,14 @@ export default function EventsPage() {
     const supabase = createClient();
 
     const { error } = await supabase.from("events").insert({
-      name: form.get("name"),
-      event_type: form.get("type"),
-      start_date: form.get("start_date"),
-      end_date: form.get("end_date") || null,
-      dojo_id: form.get("dojo_id") || null,
-      topic_id: form.get("topic_id") || null,
-      trainer_id: form.get("trainer_id") || null,
-    });
+  name: form.get("name"),
+  event_type: form.get("type"),
+  start_date: form.get("start_date"),
+  end_date: form.get("end_date") || null,
+  dojo_id: form.get("dojo_id") || null,
+  topic_id: form.get("topic_id") || null,
+  trainer_id: form.get("trainer_id") || null,
+});
 
     if (error) return alert(error.message);
 
