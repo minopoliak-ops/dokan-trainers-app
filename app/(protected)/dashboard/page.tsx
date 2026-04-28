@@ -1,27 +1,46 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/browser";
-import { Building2, CalendarCheck, Users } from "lucide-react";
+import { usePermissions } from "@/lib/usePermissions";
+import { Building2, CalendarCheck, Users, UserRound } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
 export default function DashboardPage() {
+  const { permissions, dojoIds } = usePermissions();
   const [dojos, setDojos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const supabase = createClient();
+    async function loadDojos() {
+      if (!permissions) return;
 
-    supabase
-      .from("dojos")
-      .select("*")
-      .order("name")
-      .then(({ data, error }) => {
-        if (error) console.error(error);
-        setDojos(data || []);
-        setLoading(false);
-      });
-  }, []);
+      const supabase = createClient();
+
+      let query = supabase
+        .from("dojos")
+        .select("*, trainer_dojos(trainers(full_name))")
+        .order("name");
+
+      if (!permissions?.can_manage_trainers) {
+        if (dojoIds.length === 0) {
+          setDojos([]);
+          setLoading(false);
+          return;
+        }
+
+        query = query.in("id", dojoIds);
+      }
+
+      const { data, error } = await query;
+
+      if (error) console.error(error);
+      setDojos(data || []);
+      setLoading(false);
+    }
+
+    loadDojos();
+  }, [permissions, dojoIds]);
 
   return (
     <div className="min-h-screen space-y-6 bg-[#f7f2e8] px-5 py-6 pb-40">
@@ -38,10 +57,7 @@ export default function DashboardPage() {
       {loading && (
         <div className="grid gap-5">
           {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="h-32 animate-pulse rounded-3xl bg-white/60"
-            />
+            <div key={i} className="h-32 animate-pulse rounded-3xl bg-white/60" />
           ))}
         </div>
       )}
@@ -53,35 +69,47 @@ export default function DashboardPage() {
       )}
 
       <div className="grid gap-5">
-        {dojos.map((dojo, i) => (
-          <Link
-            key={dojo.id}
-            href={`/dojos/${dojo.id}`}
-            className="group rounded-[26px] bg-white p-6 shadow-[0_8px_20px_rgba(0,0,0,0.08)] ring-1 ring-black/5 transition-all duration-300 active:scale-[0.98] hover:-translate-y-1 hover:shadow-[0_12px_28px_rgba(0,0,0,0.12)]"
-            style={{
-              animation: "fadeUp 0.4s ease forwards",
-              animationDelay: `${i * 0.05}s`,
-              opacity: 0,
-            }}
-          >
-            <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#d71920] text-white shadow-md">
-              <Building2 size={26} />
-            </div>
+        {dojos.map((dojo, i) => {
+          const trainerNames =
+            dojo.trainer_dojos
+              ?.map((link: any) => link.trainers?.full_name)
+              .filter(Boolean)
+              .join(", ") || "Bez priradeného trénera";
 
-            <h2 className="text-xl font-bold text-[#111]">{dojo.name}</h2>
+          return (
+            <Link
+              key={dojo.id}
+              href={`/dojos/${dojo.id}`}
+              className="group rounded-[26px] bg-white p-6 shadow-[0_8px_20px_rgba(0,0,0,0.08)] ring-1 ring-black/5 transition-all duration-300 active:scale-[0.98] hover:-translate-y-1 hover:shadow-[0_12px_28px_rgba(0,0,0,0.12)]"
+              style={{
+                animation: "fadeUp 0.4s ease forwards",
+                animationDelay: `${i * 0.05}s`,
+                opacity: 0,
+              }}
+            >
+              <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#d71920] text-white shadow-md">
+                <Building2 size={26} />
+              </div>
 
-            <p className="mt-1 text-sm text-black/60">{dojo.address}</p>
+              <h2 className="text-xl font-bold text-[#111]">{dojo.name}</h2>
+              <p className="mt-1 text-sm text-black/60">{dojo.address}</p>
 
-            <div className="mt-5 flex gap-4 text-sm font-semibold text-black/70">
-              <span className="inline-flex items-center gap-1">
-                <Users size={16} /> Žiaci
-              </span>
-              <span className="inline-flex items-center gap-1">
-                <CalendarCheck size={16} /> Prezenčka
-              </span>
-            </div>
-          </Link>
-        ))}
+              <p className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-[#f7f2e8] px-3 py-2 text-sm font-semibold text-black/60">
+                <UserRound size={16} />
+                {trainerNames}
+              </p>
+
+              <div className="mt-5 flex gap-4 text-sm font-semibold text-black/70">
+                <span className="inline-flex items-center gap-1">
+                  <Users size={16} /> Žiaci
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <CalendarCheck size={16} /> Prezenčka
+                </span>
+              </div>
+            </Link>
+          );
+        })}
       </div>
 
       <style jsx>{`
