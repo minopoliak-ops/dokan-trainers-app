@@ -2,19 +2,22 @@
 
 import { createClient } from "@/lib/supabase/browser";
 import {
-  BarChart3,
-  BookOpen,
   Building2,
-  CalendarDays,
   Home,
   LogOut,
-  Mail,
   MoreHorizontal,
   Users,
+  type LucideIcon,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+
+type MenuItem = {
+  label: string;
+  href: string;
+  Icon: LucideIcon;
+};
 
 export default function Header({ email }: { email?: string }) {
   const router = useRouter();
@@ -27,12 +30,12 @@ export default function Header({ email }: { email?: string }) {
     router.refresh();
   }
 
-  const bottomMenu = [
-    ["Domov", "/dashboard", Home],
-    ["Dojo", "/dojos", Building2],
-    ["Žiaci", "/students", Users],
-    ["Tréneri", "/trainers", Users],
-    ["Viac", "/topics", MoreHorizontal],
+  const bottomMenu: MenuItem[] = [
+    { label: "Domov", href: "/dashboard", Icon: Home },
+    { label: "Dojo", href: "/dojos", Icon: Building2 },
+    { label: "Žiaci", href: "/students", Icon: Users },
+    { label: "Tréneri", href: "/trainers", Icon: Users },
+    { label: "Viac", href: "/topics", Icon: MoreHorizontal },
   ];
 
   return (
@@ -77,16 +80,16 @@ export default function Header({ email }: { email?: string }) {
 
       <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-black/10 bg-white/95 px-3 pb-safe pt-2 backdrop-blur shadow-[0_-6px_24px_rgba(0,0,0,0.08)]">
         <div className="mx-auto grid max-w-md grid-cols-5 gap-1">
-          {bottomMenu.map(([label, href, Icon]) => {
+          {bottomMenu.map(({ label, href, Icon }) => {
             const active =
               pathname === href ||
               (href === "/dashboard" && pathname === "/") ||
-              (href !== "/dashboard" && pathname.startsWith(href as string));
+              (href !== "/dashboard" && pathname.startsWith(href));
 
             return (
               <Link
                 key={href}
-                href={href as string}
+                href={href}
                 className={`flex flex-col items-center justify-center rounded-2xl px-2 py-2 text-[11px] font-semibold transition active:scale-[0.96] ${
                   active ? "bg-[#111] text-white" : "text-black/55"
                 }`}
