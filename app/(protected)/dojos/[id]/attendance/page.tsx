@@ -260,7 +260,7 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-28 space-y-6">
       <div className="rounded-3xl bg-brand-black p-6 text-white shadow-lg">
         <p className="mb-2 text-sm text-white/60">Mesačná prezenčka</p>
         <h1 className="text-3xl font-bold">{dojo.name}</h1>
@@ -460,11 +460,11 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
       </div>
 
       <Link
-        href={`/dojos/${params.id}`}
-        className="inline-block rounded-xl bg-brand-red px-4 py-3 font-bold text-white"
-      >
-        Späť do dojo
-      </Link>
+  href={`/dojos/${params.id}`}
+  className="inline-flex w-full items-center justify-center rounded-2xl bg-[#d71920] px-4 py-4 text-center font-bold text-white shadow-[0_6px_14px_rgba(215,25,32,0.25)] active:scale-[0.98]"
+>
+  Späť do dojo
+</Link>
     </div>
   );
 }
