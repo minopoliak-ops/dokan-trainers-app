@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 export function usePermissions() {
   const [permissions, setPermissions] = useState<any>(null);
   const [email, setEmail] = useState<string>("");
+  const [dojoIds, setDojoIds] = useState<string[]>([]);
 
   useEffect(() => {
     async function load() {
@@ -18,17 +19,29 @@ export function usePermissions() {
 
       if (!userEmail) return;
 
-      const { data } = await supabase
+      // tréner
+      const { data: trainer } = await supabase
         .from("trainers")
         .select("*")
         .eq("email", userEmail)
         .single();
 
-      setPermissions(data);
+      setPermissions(trainer);
+
+      if (!trainer) return;
+
+      // dojo priradenia
+      const { data: dojoLinks } = await supabase
+        .from("trainer_dojos")
+        .select("dojo_id")
+        .eq("trainer_id", trainer.id);
+
+      const ids = (dojoLinks || []).map((d) => d.dojo_id);
+      setDojoIds(ids);
     }
 
     load();
   }, []);
 
-  return { permissions, email };
+  return { permissions, email, dojoIds };
 }
