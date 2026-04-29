@@ -71,4 +71,4 @@ export default function DojoDetailPage({ params }: { params: { id: string } }) {
       </div>
     </div>
   );
-}
+}  
