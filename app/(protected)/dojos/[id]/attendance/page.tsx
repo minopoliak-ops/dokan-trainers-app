@@ -18,6 +18,24 @@ const weekDays = [
   { value: 0, label: "Ne" },
 ];
 
+const topicColors = [
+  "bg-red-50 border-red-100",
+  "bg-blue-50 border-blue-100",
+  "bg-green-50 border-green-100",
+  "bg-yellow-50 border-yellow-100",
+  "bg-purple-50 border-purple-100",
+  "bg-orange-50 border-orange-100",
+  "bg-pink-50 border-pink-100",
+  "bg-cyan-50 border-cyan-100",
+];
+
+function topicColor(topicId?: string | null) {
+  if (!topicId) return "bg-brand-cream border-black/5";
+  let sum = 0;
+  for (const char of topicId) sum += char.charCodeAt(0);
+  return topicColors[sum % topicColors.length];
+}
+
 export default function AttendancePage({ params }: { params: { id: string } }) {
   const { permissions } = usePermissions();
 
@@ -27,6 +45,7 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
   const [trainings, setTrainings] = useState<any[]>([]);
   const [attendance, setAttendance] = useState<any[]>([]);
   const [blackouts, setBlackouts] = useState<any[]>([]);
+  const [hiddenStudents, setHiddenStudents] = useState<string[]>([]);
 
   const [allowed, setAllowed] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -40,6 +59,7 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   });
 
+  const [bulkTopicId, setBulkTopicId] = useState("");
   const [trainingDate, setTrainingDate] = useState("");
   const [topicId, setTopicId] = useState("");
   const [title, setTitle] = useState("Tréning");
@@ -48,20 +68,23 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
   const [generateTopicId, setGenerateTopicId] = useState("");
   const [generateTitle, setGenerateTitle] = useState("Tréning");
 
+  const visibleStudents = students.filter((s) => !hiddenStudents.includes(s.id));
   const monthStart = `${selectedMonth}-01`;
 
   const monthEnd = useMemo(() => {
     const [year, month] = selectedMonth.split("-").map(Number);
     const lastDay = new Date(year, month, 0).getDate();
-    return `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(
-      2,
-      "0"
-    )}`;
+    return `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+  }, [selectedMonth]);
+
+  const previousMonth = useMemo(() => {
+    const [year, month] = selectedMonth.split("-").map(Number);
+    const d = new Date(year, month - 2, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   }, [selectedMonth]);
 
   async function checkAccess(supabase: any) {
     if (!permissions) return false;
-
     if (isAdmin) return true;
 
     const { data: link } = await supabase
@@ -78,11 +101,9 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
     if (!permissions) return;
 
     setLoading(true);
-
     const supabase = createClient();
 
     const hasAccess = await checkAccess(supabase);
-
     if (!hasAccess) {
       setAllowed(false);
       setLoading(false);
@@ -131,20 +152,13 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
         ? await supabase.from("attendance").select("*").in("training_id", trainingIds)
         : { data: [], error: null };
 
-    if (dojoResult.error) console.error(dojoResult.error);
-    if (studentsResult.error) console.error(studentsResult.error);
-    if (topicsResult.error) console.error(topicsResult.error);
-    if (trainingsResult.error) console.error(trainingsResult.error);
-    if (attendanceResult.error) console.error(attendanceResult.error);
-    if (blackoutResult.error) console.error(blackoutResult.error);
-
     setDojo(dojoResult.data);
     setStudents(studentsResult.data || []);
     setTopics(topicsResult.data || []);
     setTrainings(trainingsResult.data || []);
     setAttendance(attendanceResult.data || []);
     setBlackouts(blackoutResult.data || []);
-
+    setHiddenStudents([]);
     setLoading(false);
   }
 
@@ -152,24 +166,122 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
     loadData();
   }, [permissions, selectedMonth, params.id]);
 
-  async function addTraining() {
-    if (!canCreateTrainings) {
-      alert("Nemáš oprávnenie vytvárať tréningy.");
-      return;
-    }
-
-    if (!trainingDate) {
-      alert("Vyber dátum tréningu.");
-      return;
-    }
+  async function updateTrainingTopic(trainingId: string, newTopicId: string) {
+    if (!canCreateTrainings) return;
 
     const supabase = createClient();
 
-    const hasAccess = await checkAccess(supabase);
-    if (!hasAccess) {
-      alert("Nemáš oprávnenie pre toto dojo.");
-      return;
+    const { error } = await supabase
+      .from("trainings")
+      .update({ topic_id: newTopicId || null })
+      .eq("id", trainingId);
+
+    if (error) return alert(error.message);
+
+    setTrainings((prev) =>
+      prev.map((t) =>
+        t.id === trainingId
+          ? {
+              ...t,
+              topic_id: newTopicId || null,
+              training_topics: topics.find((tp) => tp.id === newTopicId) || null,
+            }
+          : t
+      )
+    );
+  }
+
+  async function applyTopicToAllTrainings() {
+    if (!canCreateTrainings) return;
+    if (trainings.length === 0) return alert("V tomto mesiaci nie sú tréningy.");
+
+    const supabase = createClient();
+
+    const { error } = await supabase
+      .from("trainings")
+      .update({ topic_id: bulkTopicId || null })
+      .eq("dojo_id", params.id)
+      .gte("training_date", monthStart)
+      .lte("training_date", monthEnd);
+
+    if (error) return alert(error.message);
+
+    const topic = topics.find((t) => t.id === bulkTopicId) || null;
+
+    setTrainings((prev) =>
+      prev.map((t) => ({
+        ...t,
+        topic_id: bulkTopicId || null,
+        training_topics: topic,
+      }))
+    );
+  }
+
+  async function copyTopicsFromPreviousMonth() {
+    if (!canCreateTrainings) return;
+
+    const supabase = createClient();
+
+    const [year, month] = previousMonth.split("-").map(Number);
+    const prevLastDay = new Date(year, month, 0).getDate();
+    const prevStart = `${previousMonth}-01`;
+    const prevEnd = `${previousMonth}-${String(prevLastDay).padStart(2, "0")}`;
+
+    const { data: previousTrainings, error } = await supabase
+      .from("trainings")
+      .select("training_date, topic_id, training_topics(name)")
+      .eq("dojo_id", params.id)
+      .gte("training_date", prevStart)
+      .lte("training_date", prevEnd)
+      .order("training_date");
+
+    if (error) return alert(error.message);
+    if (!previousTrainings || previousTrainings.length === 0) {
+      return alert("V minulom mesiaci nie sú tréningy s témami.");
     }
+
+    const updates = trainings
+      .map((training, index) => {
+        const previous = previousTrainings[index];
+        if (!previous) return null;
+
+        return {
+          id: training.id,
+          topic_id: previous.topic_id || null,
+        };
+      })
+      .filter(Boolean) as any[];
+
+    for (const update of updates) {
+      await supabase
+        .from("trainings")
+        .update({ topic_id: update.topic_id })
+        .eq("id", update.id);
+    }
+
+    setTrainings((prev) =>
+      prev.map((training, index) => {
+        const previous = previousTrainings[index];
+        const topic = topics.find((t) => t.id === previous?.topic_id) || null;
+
+        return previous
+          ? {
+              ...training,
+              topic_id: previous.topic_id || null,
+              training_topics: topic,
+            }
+          : training;
+      })
+    );
+
+    alert("Témy z minulého mesiaca boli skopírované.");
+  }
+
+  async function addTraining() {
+    if (!canCreateTrainings) return alert("Nemáš oprávnenie vytvárať tréningy.");
+    if (!trainingDate) return alert("Vyber dátum tréningu.");
+
+    const supabase = createClient();
 
     const { error } = await supabase.from("trainings").upsert(
       {
@@ -181,10 +293,7 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
       { onConflict: "dojo_id,training_date" }
     );
 
-    if (error) {
-      alert(error.message);
-      return;
-    }
+    if (error) return alert(error.message);
 
     setTrainingDate("");
     setTopicId("");
@@ -193,23 +302,8 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
   }
 
   async function generateTrainings() {
-    if (!canCreateTrainings) {
-      alert("Nemáš oprávnenie vytvárať tréningy.");
-      return;
-    }
-
-    if (generateDays.length === 0) {
-      alert("Vyber aspoň jeden deň v týždni.");
-      return;
-    }
-
-    const supabase = createClient();
-
-    const hasAccess = await checkAccess(supabase);
-    if (!hasAccess) {
-      alert("Nemáš oprávnenie pre toto dojo.");
-      return;
-    }
+    if (!canCreateTrainings) return alert("Nemáš oprávnenie vytvárať tréningy.");
+    if (generateDays.length === 0) return alert("Vyber aspoň jeden deň v týždni.");
 
     const [year, month] = selectedMonth.split("-").map(Number);
     const lastDay = new Date(year, month, 0).getDate();
@@ -224,9 +318,7 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
 
       if (!generateDays.includes(weekday)) continue;
 
-      const dateString = `${year}-${String(month).padStart(2, "0")}-${String(
-        day
-      ).padStart(2, "0")}`;
+      const dateString = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 
       if (blackoutMap.has(dateString)) {
         skipped.push(`${dateString} - ${blackoutMap.get(dateString)}`);
@@ -241,24 +333,18 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
       });
     }
 
-    if (rows.length === 0) {
-      alert("Nenašli sa žiadne tréningové dátumy v tomto mesiaci.");
-      return;
-    }
+    if (rows.length === 0) return alert("Nenašli sa žiadne tréningové dátumy v tomto mesiaci.");
+
+    const supabase = createClient();
 
     const { error } = await supabase.from("trainings").upsert(rows, {
       onConflict: "dojo_id,training_date",
     });
 
-    if (error) {
-      alert(error.message);
-      return;
-    }
+    if (error) return alert(error.message);
 
     let message = `Vygenerované tréningy: ${rows.length}`;
-    if (skipped.length > 0) {
-      message += `\n\nPreskočené dni:\n${skipped.join("\n")}`;
-    }
+    if (skipped.length > 0) message += `\n\nPreskočené dni:\n${skipped.join("\n")}`;
 
     alert(message);
     loadData();
@@ -266,63 +352,29 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
 
   function toggleGenerateDay(day: number) {
     setGenerateDays((current) =>
-      current.includes(day)
-        ? current.filter((d) => d !== day)
-        : [...current, day]
+      current.includes(day) ? current.filter((d) => d !== day) : [...current, day]
     );
   }
 
   function getAttendance(trainingId: string, studentId: string): Status {
     return (
-      attendance.find(
-        (a) => a.training_id === trainingId && a.student_id === studentId
-      )?.status || null
+      attendance.find((a) => a.training_id === trainingId && a.student_id === studentId)
+        ?.status || null
     );
   }
 
   async function cycleAttendance(trainingId: string, studentId: string) {
-    if (!canWriteAttendance) {
-      alert("Nemáš oprávnenie zapisovať prezenčku.");
-      return;
-    }
+    if (!canWriteAttendance) return alert("Nemáš oprávnenie zapisovať prezenčku.");
 
     const supabase = createClient();
-
-    const hasAccess = await checkAccess(supabase);
-    if (!hasAccess) {
-      alert("Nemáš oprávnenie pre toto dojo.");
-      return;
-    }
-
     const current = getAttendance(trainingId, studentId);
 
-    if (!current) {
-      const { error } = await supabase.from("attendance").upsert(
-        {
-          training_id: trainingId,
-          student_id: studentId,
-          status: "present",
-        },
-        { onConflict: "training_id,student_id" }
-      );
+    let next: Status = null;
+    if (!current) next = "present";
+    else if (current === "present") next = "absent";
+    else next = null;
 
-      if (error) return alert(error.message);
-    }
-
-    if (current === "present") {
-      const { error } = await supabase.from("attendance").upsert(
-        {
-          training_id: trainingId,
-          student_id: studentId,
-          status: "absent",
-        },
-        { onConflict: "training_id,student_id" }
-      );
-
-      if (error) return alert(error.message);
-    }
-
-    if (current === "absent") {
+    if (next === null) {
       const { error } = await supabase
         .from("attendance")
         .delete()
@@ -330,9 +382,50 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
         .eq("student_id", studentId);
 
       if (error) return alert(error.message);
+    } else {
+      const { error } = await supabase.from("attendance").upsert(
+        { training_id: trainingId, student_id: studentId, status: next },
+        { onConflict: "training_id,student_id" }
+      );
+
+      if (error) return alert(error.message);
     }
 
-    loadData();
+    setAttendance((prev) => {
+      const filtered = prev.filter(
+        (a) => !(a.training_id === trainingId && a.student_id === studentId)
+      );
+
+      if (next === null) return filtered;
+
+      return [...filtered, { training_id: trainingId, student_id: studentId, status: next }];
+    });
+  }
+
+  async function markAll(trainingId: string, status: "present" | "absent") {
+    if (!canWriteAttendance) return;
+
+    const supabase = createClient();
+
+    const rows = visibleStudents.map((s) => ({
+      training_id: trainingId,
+      student_id: s.id,
+      status,
+    }));
+
+    const { error } = await supabase.from("attendance").upsert(rows, {
+      onConflict: "training_id,student_id",
+    });
+
+    if (error) return alert(error.message);
+
+    setAttendance((prev) => {
+      const filtered = prev.filter(
+        (a) => !(a.training_id === trainingId && visibleStudents.some((s) => s.id === a.student_id))
+      );
+
+      return [...filtered, ...rows];
+    });
   }
 
   function formatDate(date: string) {
@@ -341,11 +434,7 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40">
-        Načítavam...
-      </div>
-    );
+    return <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40">Načítavam...</div>;
   }
 
   if (!allowed) {
@@ -359,11 +448,7 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
   }
 
   if (!dojo) {
-    return (
-      <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40">
-        Dojo sa nenašlo.
-      </div>
-    );
+    return <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40">Dojo sa nenašlo.</div>;
   }
 
   return (
@@ -376,7 +461,6 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
 
       <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
         <h2 className="mb-4 text-2xl font-bold">Mesiac</h2>
-
         <input
           type="month"
           value={selectedMonth}
@@ -388,9 +472,40 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
       {canCreateTrainings && (
         <>
           <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
-            <h2 className="mb-4 text-2xl font-bold">
-              Automaticky vygenerovať tréningy
-            </h2>
+            <h2 className="mb-4 text-2xl font-bold">Rýchle témy mesiaca</h2>
+
+            <div className="grid gap-3 md:grid-cols-3">
+              <select
+                value={bulkTopicId}
+                onChange={(e) => setBulkTopicId(e.target.value)}
+                className="rounded-xl border px-4 py-3"
+              >
+                <option value="">Bez témy</option>
+                {topics.map((topic) => (
+                  <option key={topic.id} value={topic.id}>
+                    {topic.name}
+                  </option>
+                ))}
+              </select>
+
+              <button
+                onClick={applyTopicToAllTrainings}
+                className="rounded-xl bg-[#111] px-4 py-3 font-bold text-white"
+              >
+                Použiť pre všetky tréningy
+              </button>
+
+              <button
+                onClick={copyTopicsFromPreviousMonth}
+                className="rounded-xl bg-[#d71920] px-4 py-3 font-bold text-white"
+              >
+                Kopírovať z minulého mesiaca
+              </button>
+            </div>
+          </div>
+
+          <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
+            <h2 className="mb-4 text-2xl font-bold">Automaticky vygenerovať tréningy</h2>
 
             <div className="mb-4 flex flex-wrap gap-2">
               {weekDays.map((day) => (
@@ -436,16 +551,10 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
                 Vygenerovať mesiac
               </button>
             </div>
-
-            <p className="mt-3 text-sm text-black/60">
-              Generovanie preskočí sviatky a prázdniny uložené v databáze.
-            </p>
           </div>
 
           <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
-            <h2 className="mb-4 text-2xl font-bold">
-              Pridať jeden tréning ručne
-            </h2>
+            <h2 className="mb-4 text-2xl font-bold">Pridať jeden tréning ručne</h2>
 
             <div className="grid gap-3 md:grid-cols-4">
               <input
@@ -487,21 +596,26 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
       )}
 
       <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-black/10 sm:p-6">
-        <h2 className="mb-4 text-2xl font-bold">Prezenčka za mesiac</h2>
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-2xl font-bold">Prezenčka za mesiac</h2>
 
-        {!canWriteAttendance && (
-          <p className="mb-4 rounded-2xl bg-yellow-50 p-4 text-sm font-semibold text-yellow-800">
-            Máš iba náhľad prezenčky. Nemáš oprávnenie zapisovať dochádzku.
-          </p>
-        )}
+          {hiddenStudents.length > 0 && (
+            <button
+              onClick={() => setHiddenStudents([])}
+              className="rounded-xl bg-black px-4 py-2 text-sm font-bold text-white"
+            >
+              Zobraziť všetkých späť
+            </button>
+          )}
+        </div>
 
         {trainings.length === 0 ? (
           <p className="rounded-2xl bg-brand-cream p-6 text-center">
             V tomto mesiaci ešte nie sú zadané tréningy.
           </p>
-        ) : students.length === 0 ? (
+        ) : visibleStudents.length === 0 ? (
           <p className="rounded-2xl bg-brand-cream p-6 text-center">
-            V tomto dojo ešte nie sú žiadni žiaci.
+            V tomto dojo nie sú zobrazení žiadni žiaci.
           </p>
         ) : (
           <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
@@ -515,15 +629,55 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
                   {trainings.map((training) => (
                     <th
                       key={training.id}
-                      className="min-w-[110px] border-b p-3 text-center sm:min-w-[140px]"
+                      className="min-w-[150px] border-b p-3 text-center"
                     >
-                      <div className="rounded-2xl bg-brand-cream p-3">
-                        <p className="text-xs font-bold sm:text-sm">
-                          {training.training_topics?.name || "Bez témy"}
-                        </p>
+                      <div
+                        className={`rounded-2xl border p-3 space-y-2 ${topicColor(
+                          training.topic_id
+                        )}`}
+                      >
                         <p className="text-lg font-black">
                           {formatDate(training.training_date)}
                         </p>
+
+                        {canCreateTrainings ? (
+                          <select
+                            value={training.topic_id || ""}
+                            onChange={(e) =>
+                              updateTrainingTopic(training.id, e.target.value)
+                            }
+                            className="w-full rounded-lg border bg-white px-2 py-1 text-xs"
+                          >
+                            <option value="">Bez témy</option>
+                            {topics.map((topic) => (
+                              <option key={topic.id} value={topic.id}>
+                                {topic.name}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <p className="text-xs font-bold">
+                            {training.training_topics?.name || "Bez témy"}
+                          </p>
+                        )}
+
+                        {canWriteAttendance && (
+                          <div className="grid grid-cols-2 gap-1">
+                            <button
+                              onClick={() => markAll(training.id, "present")}
+                              className="rounded-lg bg-green-600 px-2 py-1 text-xs font-bold text-white"
+                            >
+                              ✓ všetci
+                            </button>
+
+                            <button
+                              onClick={() => markAll(training.id, "absent")}
+                              className="rounded-lg bg-red-600 px-2 py-1 text-xs font-bold text-white"
+                            >
+                              ✕ všetci
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </th>
                   ))}
@@ -531,7 +685,7 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
               </thead>
 
               <tbody>
-                {students.map((student) => (
+                {visibleStudents.map((student) => (
                   <tr key={student.id}>
                     <td className="sticky left-0 z-20 min-w-[180px] border-b bg-white p-3 shadow-[8px_0_12px_-12px_rgba(0,0,0,0.5)] sm:min-w-[240px]">
                       <p className="font-bold leading-tight">
@@ -540,16 +694,24 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
                       <p className="text-sm text-black/60">
                         {student.technical_grade || "Bez stupňa"}
                       </p>
+
+                      {canWriteAttendance && (
+                        <button
+                          onClick={() =>
+                            setHiddenStudents((prev) => [...prev, student.id])
+                          }
+                          className="mt-1 text-xs font-bold text-red-600"
+                        >
+                          Odobrať z prezenčky
+                        </button>
+                      )}
                     </td>
 
                     {trainings.map((training) => {
                       const status = getAttendance(training.id, student.id);
 
                       return (
-                        <td
-                          key={training.id}
-                          className="border-b p-3 text-center"
-                        >
+                        <td key={training.id} className="border-b p-3 text-center">
                           <button
                             disabled={!canWriteAttendance}
                             onClick={() =>
