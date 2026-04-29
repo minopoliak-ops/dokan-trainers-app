@@ -7,7 +7,7 @@ import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 
 export default function DojosPage() {
-  const { permissions } = usePermissions();
+  const { permissions, loading: permissionsLoading } = usePermissions();
 
   const [dojos, setDojos] = useState<any[]>([]);
   const [name, setName] = useState("");
@@ -18,7 +18,13 @@ export default function DojosPage() {
   const isAdmin = !!permissions?.can_manage_trainers;
 
   async function load() {
-    if (!permissions) return;
+    if (permissionsLoading) return;
+
+    if (!permissions?.id) {
+      setDojos([]);
+      setLoading(false);
+      return;
+    }
 
     setLoading(true);
 
@@ -70,7 +76,7 @@ export default function DojosPage() {
 
   useEffect(() => {
     load();
-  }, [permissions]);
+  }, [permissionsLoading, permissions?.id, isAdmin]);
 
   async function add(e: FormEvent) {
     e.preventDefault();
@@ -98,13 +104,19 @@ export default function DojosPage() {
     load();
   }
 
+  if (permissionsLoading) {
+    return (
+      <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40">
+        Načítavam oprávnenia...
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40 space-y-6">
       <div className="rounded-3xl bg-[#111] p-6 text-white shadow-[0_10px_30px_rgba(0,0,0,0.25)]">
         <h1 className="text-3xl font-extrabold">Dojo / telocvične</h1>
-        <p className="mt-2 text-white/70">
-          Vyber dojo alebo pridaj nové.
-        </p>
+        <p className="mt-2 text-white/70">Vyber dojo alebo pridaj nové.</p>
       </div>
 
       {isAdmin && showForm && (

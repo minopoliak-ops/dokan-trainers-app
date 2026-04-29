@@ -70,5 +70,9 @@ export function usePermissions() {
     load();
   }, []);
 
-  return { permissions, email, dojoIds, loading };
-}
+  return {
+  permissions: permissions || {},
+  email,
+  dojoIds,
+  loading,
+};
