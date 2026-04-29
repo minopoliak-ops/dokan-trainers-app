@@ -5,43 +5,70 @@ import { useEffect, useState } from "react";
 
 export function usePermissions() {
   const [permissions, setPermissions] = useState<any>(null);
-  const [email, setEmail] = useState<string>("");
+  const [email, setEmail] = useState("");
   const [dojoIds, setDojoIds] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
+      setLoading(true);
+
       const supabase = createClient();
 
       const { data: userData } = await supabase.auth.getUser();
       const userEmail = userData.user?.email || "";
+      const userId = userData.user?.id || "";
 
       setEmail(userEmail);
 
-      if (!userEmail) return;
+      if (!userEmail) {
+        setPermissions(null);
+        setDojoIds([]);
+        setLoading(false);
+        return;
+      }
 
-      // tréner
-      const { data: trainer } = await supabase
+      const { data: trainer, error: trainerError } = await supabase
         .from("trainers")
         .select("*")
-        .eq("email", userEmail)
-        .single();
+        .or(`email.eq.${userEmail},user_id.eq.${userId}`)
+        .maybeSingle();
+
+      if (trainerError) {
+        console.error("Trainer permissions error:", trainerError);
+        setPermissions(null);
+        setDojoIds([]);
+        setLoading(false);
+        return;
+      }
+
+      if (!trainer) {
+        setPermissions(null);
+        setDojoIds([]);
+        setLoading(false);
+        return;
+      }
 
       setPermissions(trainer);
 
-      if (!trainer) return;
-
-      // dojo priradenia
-      const { data: dojoLinks } = await supabase
+      const { data: dojoLinks, error: linksError } = await supabase
         .from("trainer_dojos")
         .select("dojo_id")
         .eq("trainer_id", trainer.id);
 
-      const ids = (dojoLinks || []).map((d) => d.dojo_id);
-      setDojoIds(ids);
+      if (linksError) {
+        console.error("Trainer dojos error:", linksError);
+        setDojoIds([]);
+        setLoading(false);
+        return;
+      }
+
+      setDojoIds((dojoLinks || []).map((d: any) => d.dojo_id));
+      setLoading(false);
     }
 
     load();
   }, []);
 
-  return { permissions, email, dojoIds };
+  return { permissions, email, dojoIds, loading };
 }
