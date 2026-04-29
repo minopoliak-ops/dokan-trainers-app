@@ -20,73 +20,78 @@ export default function EmailsPage() {
   );
 
   async function loadData() {
-    const supabase = createClient();
+  const supabase = createClient();
 
-    const { data: userData } = await supabase.auth.getUser();
-    const email = userData.user?.email;
+  const { data: userData } = await supabase.auth.getUser();
+  const email = userData.user?.email;
 
-    if (!email) return;
+  if (!email) return;
 
-    const { data: trainer } = await supabase
-      .from("trainers")
-      .select("*")
-      .eq("email", email)
-      .single();
+  const { data: trainer } = await supabase
+    .from("trainers")
+    .select("*")
+    .eq("email", email)
+    .single();
 
-    if (!trainer) {
-      setDojos([]);
-      setStudents([]);
-      return;
-    }
+  if (!trainer) {
+    setDojos([]);
+    setStudents([]);
+    return;
+  }
 
-    const isAdminUser = !!trainer.can_manage_trainers;
-    setIsAdmin(isAdminUser);
+  const admin = !!trainer.can_manage_trainers;
+  setIsAdmin(admin);
 
-    let allowedDojoIds: string[] = [];
-
-    if (!isAdminUser) {
-      const { data: links } = await supabase
-        .from("trainer_dojos")
-        .select("dojo_id")
-        .eq("trainer_id", trainer.id);
-
-      allowedDojoIds = (links || []).map((l: any) => l.dojo_id);
-
-      if (allowedDojoIds.length === 0) {
-        setDojos([]);
-        setStudents([]);
-        return;
-      }
-    }
-
-    let dojosQuery = supabase.from("dojos").select("*").order("name");
-
-    let studentsQuery = supabase
-      .from("students")
-      .select("*, dojos(name)")
-      .eq("active", true)
-      .order("last_name");
-
-    if (!isAdminUser) {
-      dojosQuery = dojosQuery.in("id", allowedDojoIds);
-      studentsQuery = studentsQuery.in("dojo_id", allowedDojoIds);
-    }
-
+  if (admin) {
     const [dojosRes, studentsRes] = await Promise.all([
-      dojosQuery,
-      studentsQuery,
+      supabase.from("dojos").select("*").order("name"),
+      supabase
+        .from("students")
+        .select("*, dojos(name)")
+        .eq("active", true)
+        .order("last_name"),
     ]);
-
-    if (dojosRes.error) alert(dojosRes.error.message);
-    if (studentsRes.error) alert(studentsRes.error.message);
 
     setDojos(dojosRes.data || []);
     setStudents(studentsRes.data || []);
+    return;
   }
 
+  const { data: links } = await supabase
+    .from("trainer_dojos")
+    .select("dojo_id")
+    .eq("trainer_id", trainer.id);
+
+  const allowedDojoIds = (links || []).map((l: any) => l.dojo_id);
+
+  if (allowedDojoIds.length === 0) {
+    setDojos([]);
+    setStudents([]);
+    return;
+  }
+
+  const [dojosRes, studentsRes] = await Promise.all([
+    supabase
+      .from("dojos")
+      .select("*")
+      .in("id", allowedDojoIds)
+      .order("name"),
+
+    supabase
+      .from("students")
+      .select("*, dojos(name)")
+      .eq("active", true)
+      .in("dojo_id", allowedDojoIds)
+      .order("last_name"),
+  ]);
+
+  setDojos(dojosRes.data || []);
+  setStudents(studentsRes.data || []);
+}
+
   useEffect(() => {
-    loadData();
-  }, []);
+  loadData();
+}, []);
 
   const recipients = useMemo(() => {
     if (target === "student") {
