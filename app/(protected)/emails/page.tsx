@@ -22,40 +22,48 @@ export default function EmailsPage() {
   );
 
   async function loadData() {
-    const supabase = createClient();
+  if (!permissions) return;
 
-    const { data: userData } = await supabase.auth.getUser();
-    const email = userData.user?.email || "";
+  const supabase = createClient();
 
-    const admin = email === ADMIN_EMAIL;
-    setIsAdmin(admin);
+  let allowedDojoIds: string[] = [];
 
-    const { data: trainer } = await supabase
-      .from("trainers")
-      .select("*")
-      .eq("email", email)
-      .single();
+  if (!isAdmin) {
+    const { data: links } = await supabase
+      .from("trainer_dojos")
+      .select("dojo_id")
+      .eq("trainer_id", permissions.id);
 
-    if (!trainer && !admin) {
+    allowedDojoIds = (links || []).map((l: any) => l.dojo_id);
+
+    if (allowedDojoIds.length === 0) {
       setDojos([]);
       setStudents([]);
       return;
     }
+  }
 
-    if (admin) {
-      const [dojosRes, studentsRes] = await Promise.all([
-        supabase.from("dojos").select("*").order("name"),
-        supabase
-          .from("students")
-          .select("*, dojos(name)")
-          .eq("active", true)
-          .order("last_name"),
-      ]);
+  let dojosQuery = supabase.from("dojos").select("*").order("name");
 
-      setDojos(dojosRes.data || []);
-      setStudents(studentsRes.data || []);
-      return;
-    }
+  let studentsQuery = supabase
+    .from("students")
+    .select("*, dojos(name)")
+    .eq("active", true)
+    .order("last_name");
+
+  if (!isAdmin) {
+    dojosQuery = dojosQuery.in("id", allowedDojoIds);
+    studentsQuery = studentsQuery.in("dojo_id", allowedDojoIds);
+  }
+
+  const [dojosRes, studentsRes] = await Promise.all([
+    dojosQuery,
+    studentsQuery,
+  ]);
+
+  setDojos(dojosRes.data || []);
+  setStudents(studentsRes.data || []);
+}
 
     const { data: links } = await supabase
       .from("trainer_dojos")
@@ -90,8 +98,8 @@ export default function EmailsPage() {
   }
 
   useEffect(() => {
-    loadData();
-  }, []);
+  loadData();
+}, [permissions]);
 
   const recipients = useMemo(() => {
     if (target === "student") {
