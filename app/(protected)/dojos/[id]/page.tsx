@@ -1,7 +1,14 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/browser";
-import { Copy, MapPin, MessageCircle, Navigation, Phone, Save } from "lucide-react";
+import {
+  Copy,
+  MapPin,
+  MessageCircle,
+  Navigation,
+  Phone,
+  Save,
+} from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
@@ -36,7 +43,9 @@ export default function DojoDetailPage({ params }: { params: { id: string } }) {
   }
 
   function contactPhone(student: any) {
-    return student.is_adult ? student.phone : student.parent_phone;
+    return student.is_adult
+      ? student.phone || student.parent_phone
+      : student.parent_phone || student.phone;
   }
 
   function contactLabel(student: any) {
@@ -132,7 +141,9 @@ export default function DojoDetailPage({ params }: { params: { id: string } }) {
 
             <textarea
               value={dojo.training_schedule || ""}
-              onChange={(e) => updateDojo("training_schedule", e.target.value)}
+              onChange={(e) =>
+                updateDojo("training_schedule", e.target.value)
+              }
               placeholder="Časy tréningov"
               rows={4}
               className="rounded-xl border px-4 py-3"
@@ -156,9 +167,12 @@ export default function DojoDetailPage({ params }: { params: { id: string } }) {
         ) : (
           <div className="grid gap-4">
             <div className="rounded-2xl bg-[#f7f2e8] p-4">
-              <p className="mb-1 text-sm font-bold text-black/50">Časy tréningov</p>
+              <p className="mb-1 text-sm font-bold text-black/50">
+                Časy tréningov
+              </p>
               <p className="whitespace-pre-line font-semibold">
-                {dojo.training_schedule || "Časy tréningov ešte nie sú vyplnené."}
+                {dojo.training_schedule ||
+                  "Časy tréningov ešte nie sú vyplnené."}
               </p>
             </div>
 
@@ -243,7 +257,9 @@ export default function DojoDetailPage({ params }: { params: { id: string } }) {
                     </p>
 
                     <p className="mt-1 text-xs font-bold text-black/50">
-                      {student.is_adult ? "🟢 Dospelý cvičiaci" : "🔵 Dieťa / kontakt rodič"}
+                      {student.is_adult
+                        ? "🟢 Dospelý cvičiaci"
+                        : "🔵 Dieťa / kontakt rodič"}
                     </p>
                   </Link>
 
