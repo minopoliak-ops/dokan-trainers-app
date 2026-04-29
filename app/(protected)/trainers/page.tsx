@@ -1,10 +1,11 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/browser";
+import { usePermissions } from "@/lib/usePermissions";
 import { Trash2, X } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 
-const permissions = [
+const permissionsList = [
   ["can_attendance", "Zapisovať prezenčku"],
   ["can_add_students", "Pridávať žiakov"],
   ["can_delete_students", "Vymazávať žiakov"],
@@ -28,9 +29,23 @@ const menus = [
 ];
 
 export default function TrainersPage() {
+  const { permissions } = usePermissions();
+  const isAdmin = !!permissions?.can_manage_trainers;
+
   const [trainers, setTrainers] = useState<any[]>([]);
   const [dojos, setDojos] = useState<any[]>([]);
   const [trainerDojos, setTrainerDojos] = useState<any[]>([]);
+
+  // 🔐 HARD LOCK
+  if (permissions && !isAdmin) {
+    return (
+      <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40">
+        <div className="rounded-3xl bg-white p-6 text-center shadow-sm">
+          ❌ Nemáš oprávnenie spravovať trénerov
+        </div>
+      </div>
+    );
+  }
 
   async function loadData() {
     const supabase = createClient();
@@ -54,8 +69,8 @@ export default function TrainersPage() {
   }
 
   useEffect(() => {
-    loadData();
-  }, []);
+    if (isAdmin) loadData();
+  }, [isAdmin]);
 
   async function addTrainer(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -92,6 +107,7 @@ export default function TrainersPage() {
 
   async function toggleMenu(trainer: any, key: string) {
     const current = trainer.visible_menu || [];
+
     const next = current.includes(key)
       ? current.filter((item: string) => item !== key)
       : [...current, key];
@@ -159,162 +175,58 @@ export default function TrainersPage() {
 
   return (
     <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40 space-y-6">
-      <div className="rounded-[28px] bg-[#111] p-6 text-white shadow-[0_10px_30px_rgba(0,0,0,0.25)]">
+      <div className="rounded-[28px] bg-[#111] p-6 text-white">
         <h1 className="text-3xl font-extrabold">Tréneri a oprávnenia</h1>
-        <p className="mt-2 text-sm text-white/70">
-          Pridávanie trénerov, práva, viditeľné menu a priradené dojo.
-        </p>
       </div>
 
-      <form
-        onSubmit={addTrainer}
-        className="grid gap-3 rounded-[26px] bg-white p-5 shadow-[0_8px_20px_rgba(0,0,0,0.08)] ring-1 ring-black/5"
-      >
-        <input
-          name="full_name"
-          required
-          placeholder="Meno trénera"
-          className="h-[52px] w-full rounded-2xl border border-black/10 bg-[#fafafa] px-4"
-        />
-
-        <input
-          name="email"
-          type="email"
-          required
-          placeholder="Email"
-          className="h-[52px] w-full rounded-2xl border border-black/10 bg-[#fafafa] px-4"
-        />
-
-        <input
-          name="phone"
-          placeholder="Telefón"
-          className="h-[52px] w-full rounded-2xl border border-black/10 bg-[#fafafa] px-4"
-        />
-
-        <button className="h-[54px] rounded-2xl bg-[#d71920] px-4 font-bold text-white shadow-[0_6px_14px_rgba(215,25,32,0.25)] active:scale-[0.98]">
-          + Pridať trénera
-        </button>
+      <form onSubmit={addTrainer} className="grid gap-3 bg-white p-5 rounded-3xl">
+        <input name="full_name" required placeholder="Meno trénera" />
+        <input name="email" required placeholder="Email" />
+        <input name="phone" placeholder="Telefón" />
+        <button>+ Pridať trénera</button>
       </form>
 
-      <div className="grid gap-5">
-        {trainers.length === 0 && (
-          <div className="rounded-3xl bg-white p-6 text-center shadow-sm">
-            Zatiaľ nemáš žiadnych trénerov.
-          </div>
-        )}
+      {trainers.map((trainer) => {
+        const assigned = getTrainerDojos(trainer.id);
 
-        {trainers.map((trainer) => {
-          const assigned = getTrainerDojos(trainer.id);
-          const assignedIds = assigned.map((item) => item.dojo_id);
-          const availableDojos = dojos.filter(
-            (dojo) => !assignedIds.includes(dojo.id)
-          );
+        return (
+          <div key={trainer.id} className="bg-white p-5 rounded-3xl">
+            <h2>{trainer.full_name}</h2>
 
-          return (
-            <div
-              key={trainer.id}
-              className="rounded-[26px] bg-white p-5 shadow-[0_8px_20px_rgba(0,0,0,0.08)] ring-1 ring-black/5"
-            >
-              <div className="mb-5 flex items-start justify-between gap-4">
-                <div>
-                  <h2 className="text-2xl font-extrabold">
-                    {trainer.full_name}
-                  </h2>
-                  <p className="text-sm text-black/60">{trainer.email}</p>
-                  <p className="text-sm text-black/60">{trainer.phone || ""}</p>
-                </div>
-
-                <button
-                  onClick={() => deleteTrainer(trainer.id)}
-                  className="rounded-2xl bg-black/10 p-3 active:scale-[0.98]"
-                >
-                  <Trash2 size={20} />
+            {/* DOJOS */}
+            <div>
+              {assigned.map((link) => (
+                <button key={link.id} onClick={() => removeTrainerDojo(link.id)}>
+                  {link.dojos?.name} <X size={14} />
                 </button>
-              </div>
-
-              <div className="mb-6 rounded-3xl bg-[#f7f2e8] p-4">
-                <h3 className="mb-3 font-extrabold">Priradené dojo</h3>
-
-                {assigned.length === 0 ? (
-                  <p className="mb-3 text-sm text-black/50">
-                    Tréner nemá priradené žiadne dojo.
-                  </p>
-                ) : (
-                  <div className="mb-3 flex flex-wrap gap-2">
-                    {assigned.map((link) => (
-                      <button
-                        key={link.id}
-                        onClick={() => removeTrainerDojo(link.id)}
-                        className="inline-flex items-center gap-2 rounded-2xl bg-white px-3 py-2 text-sm font-bold text-black shadow-sm active:scale-[0.98]"
-                      >
-                        {link.dojos?.name || "Dojo"}
-                        <X size={15} className="text-[#d71920]" />
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                <select
-                  defaultValue=""
-                  onChange={(e) => {
-                    assignDojo(trainer.id, e.target.value);
-                    e.currentTarget.value = "";
-                  }}
-                  className="h-[52px] w-full rounded-2xl border border-black/10 bg-white px-4"
-                >
-                  <option value="">+ Pridať dojo trénerovi</option>
-                  {availableDojos.map((dojo) => (
-                    <option key={dojo.id} value={dojo.id}>
-                      {dojo.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="mb-6">
-                <h3 className="mb-3 font-extrabold">Oprávnenia</h3>
-
-                <div className="grid gap-2">
-                  {permissions.map(([key, label]) => (
-                    <button
-                      key={key}
-                      onClick={() => togglePermission(trainer, key)}
-                      className={`rounded-2xl px-4 py-3 text-left font-semibold ${
-                        trainer[key]
-                          ? "bg-green-100 text-green-800"
-                          : "bg-black/5 text-black/60"
-                      }`}
-                    >
-                      {trainer[key] ? "✓ " : "○ "}
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <h3 className="mb-3 font-extrabold">Viditeľné menu</h3>
-
-                <div className="flex flex-wrap gap-2">
-                  {menus.map(([key, label]) => (
-                    <button
-                      key={key}
-                      onClick={() => toggleMenu(trainer, key)}
-                      className={`rounded-2xl px-4 py-2 font-bold ${
-                        (trainer.visible_menu || []).includes(key)
-                          ? "bg-[#d71920] text-white"
-                          : "bg-black/10 text-black"
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              ))}
             </div>
-          );
-        })}
-      </div>
+
+            {/* PERMISSIONS */}
+            <div>
+              {permissionsList.map(([key, label]) => (
+                <button key={key} onClick={() => togglePermission(trainer, key)}>
+                  {trainer[key] ? "✓" : "○"} {label}
+                </button>
+              ))}
+            </div>
+
+            {/* MENU */}
+            <div>
+              {menus.map(([key, label]) => (
+                <button key={key} onClick={() => toggleMenu(trainer, key)}>
+                  {(trainer.visible_menu || []).includes(key) ? "✓" : "○"}{" "}
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <button onClick={() => deleteTrainer(trainer.id)}>
+              <Trash2 />
+            </button>
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/browser";
+import { usePermissions } from "@/lib/usePermissions";
 import {
   Building2,
   Home,
@@ -14,6 +15,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
 type MenuItem = {
+  key: string;
   label: string;
   href: string;
   Icon: LucideIcon;
@@ -22,6 +24,7 @@ type MenuItem = {
 export default function Header({ email }: { email?: string }) {
   const router = useRouter();
   const pathname = usePathname();
+  const { permissions } = usePermissions();
 
   async function logout() {
     const supabase = createClient();
@@ -30,21 +33,30 @@ export default function Header({ email }: { email?: string }) {
     router.refresh();
   }
 
-  const bottomMenu: MenuItem[] = [
-    { label: "Domov", href: "/dashboard", Icon: Home },
-    { label: "Dojo", href: "/dojos", Icon: Building2 },
-    { label: "Žiaci", href: "/students", Icon: Users },
-    { label: "Tréneri", href: "/trainers", Icon: Users },
-    { label: "Viac", href: "/more", Icon: MoreHorizontal },
+  const allMenu: MenuItem[] = [
+    { key: "dashboard", label: "Domov", href: "/dashboard", Icon: Home },
+    { key: "dojo", label: "Dojo", href: "/dojos", Icon: Building2 },
+    { key: "students", label: "Žiaci", href: "/students", Icon: Users },
+    { key: "trainers", label: "Tréneri", href: "/trainers", Icon: Users },
+    { key: "more", label: "Viac", href: "/more", Icon: MoreHorizontal },
   ];
+
+  const visibleMenu = permissions?.visible_menu || [];
+
+  const bottomMenu =
+    permissions?.can_manage_trainers
+      ? allMenu
+      : allMenu.filter((item) => {
+          if (item.key === "trainers") return false;
+          if (item.key === "more") return true;
+          return visibleMenu.includes(item.key);
+        });
 
   return (
     <>
-      {/* HEADER */}
       <header className="sticky top-0 z-50 border-b border-black/10 bg-[#f7f2e8]/95 pt-safe backdrop-blur">
         <div className="mx-auto max-w-7xl px-5 pb-3 pt-2">
           <div className="flex items-center justify-between gap-3">
-            {/* LOGO + TEXT */}
             <Link href="/dashboard" className="flex items-center gap-3">
               <Image
                 src="/logo.png"
@@ -57,21 +69,15 @@ export default function Header({ email }: { email?: string }) {
 
               <div className="leading-tight">
                 <p className="text-[20px] font-extrabold tracking-[-0.02em] text-[#111]">
-                  DOKAN{" "}
-                  <span className="text-[#d71920]">
-                    Trénerská zóna
-                  </span>
+                  DOKAN <span className="text-[#d71920]">Trénerská zóna</span>
                 </p>
 
                 {email && (
-                  <p className="text-xs text-black/45 truncate">
-                    {email}
-                  </p>
+                  <p className="truncate text-xs text-black/45">{email}</p>
                 )}
               </div>
             </Link>
 
-            {/* LOGOUT */}
             <button
               onClick={logout}
               className="inline-flex items-center gap-2 rounded-2xl bg-black px-4 py-2 text-sm font-semibold text-white active:scale-[0.97]"
@@ -83,9 +89,11 @@ export default function Header({ email }: { email?: string }) {
         </div>
       </header>
 
-      {/* BOTTOM MENU */}
       <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-black/10 bg-white/95 px-3 pb-safe pt-2 backdrop-blur">
-        <div className="mx-auto grid max-w-md grid-cols-5 gap-1">
+        <div
+          className="mx-auto grid max-w-md gap-1"
+          style={{ gridTemplateColumns: `repeat(${bottomMenu.length}, minmax(0, 1fr))` }}
+        >
           {bottomMenu.map(({ label, href, Icon }) => {
             const active =
               pathname === href ||
