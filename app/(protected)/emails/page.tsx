@@ -8,7 +8,6 @@ const ADMIN_EMAIL = "mino.poliak@gmail.com";
 
 export default function EmailsPage() {
   const [isAdmin, setIsAdmin] = useState(false);
-
   const [dojos, setDojos] = useState<any[]>([]);
   const [students, setStudents] = useState<any[]>([]);
   const [selectedDojoId, setSelectedDojoId] = useState("");
@@ -21,95 +20,80 @@ export default function EmailsPage() {
     "Dobrý deň,\n\nposielame informáciu z tréningovej zóny DOKAN Bratislava.\n\nS pozdravom,\nDOKAN Bratislava"
   );
 
-  async function loadData() {
-  if (!permissions) return;
-
-  const supabase = createClient();
-
-  let allowedDojoIds: string[] = [];
-
-  if (!isAdmin) {
-    const { data: links } = await supabase
-      .from("trainer_dojos")
-      .select("dojo_id")
-      .eq("trainer_id", permissions.id);
-
-    allowedDojoIds = (links || []).map((l: any) => l.dojo_id);
-
-    if (allowedDojoIds.length === 0) {
-      setDojos([]);
-      setStudents([]);
-      return;
-    }
-  }
-
-  let dojosQuery = supabase.from("dojos").select("*").order("name");
-
-  let studentsQuery = supabase
-    .from("students")
-    .select("*, dojos(name)")
-    .eq("active", true)
-    .order("last_name");
-
-  if (!isAdmin) {
-    dojosQuery = dojosQuery.in("id", allowedDojoIds);
-    studentsQuery = studentsQuery.in("dojo_id", allowedDojoIds);
-  }
-
-  const [dojosRes, studentsRes] = await Promise.all([
-    dojosQuery,
-    studentsQuery,
-  ]);
-
-  setDojos(dojosRes.data || []);
-  setStudents(studentsRes.data || []);
-}
-
-    const { data: links } = await supabase
-      .from("trainer_dojos")
-      .select("dojo_id")
-      .eq("trainer_id", trainer.id);
-
-    const allowedDojoIds = (links || []).map((l: any) => l.dojo_id);
-
-    if (allowedDojoIds.length === 0) {
-      setDojos([]);
-      setStudents([]);
-      return;
-    }
-
-    const [dojosRes, studentsRes] = await Promise.all([
-      supabase
-        .from("dojos")
-        .select("*")
-        .in("id", allowedDojoIds)
-        .order("name"),
-
-      supabase
-        .from("students")
-        .select("*, dojos(name)")
-        .eq("active", true)
-        .in("dojo_id", allowedDojoIds)
-        .order("last_name"),
-    ]);
-
-    setDojos(dojosRes.data || []);
-    setStudents(studentsRes.data || []);
-  }
-
   useEffect(() => {
-  loadData();
-}, [permissions]);
+    async function loadData() {
+      const supabase = createClient();
+
+      const { data: userData } = await supabase.auth.getUser();
+      const email = userData.user?.email || "";
+
+      const admin = email === ADMIN_EMAIL;
+      setIsAdmin(admin);
+
+      const { data: trainer } = await supabase
+        .from("trainers")
+        .select("*")
+        .eq("email", email)
+        .single();
+
+      if (!trainer && !admin) {
+        setDojos([]);
+        setStudents([]);
+        return;
+      }
+
+      if (admin) {
+        const [dojosRes, studentsRes] = await Promise.all([
+          supabase.from("dojos").select("*").order("name"),
+          supabase
+            .from("students")
+            .select("*, dojos(name)")
+            .eq("active", true)
+            .order("last_name"),
+        ]);
+
+        setDojos(dojosRes.data || []);
+        setStudents(studentsRes.data || []);
+        return;
+      }
+
+      const { data: links } = await supabase
+        .from("trainer_dojos")
+        .select("dojo_id")
+        .eq("trainer_id", trainer.id);
+
+      const allowedDojoIds = (links || []).map((l: any) => l.dojo_id);
+
+      if (allowedDojoIds.length === 0) {
+        setDojos([]);
+        setStudents([]);
+        return;
+      }
+
+      const [dojosRes, studentsRes] = await Promise.all([
+        supabase
+          .from("dojos")
+          .select("*")
+          .in("id", allowedDojoIds)
+          .order("name"),
+        supabase
+          .from("students")
+          .select("*, dojos(name)")
+          .eq("active", true)
+          .in("dojo_id", allowedDojoIds)
+          .order("last_name"),
+      ]);
+
+      setDojos(dojosRes.data || []);
+      setStudents(studentsRes.data || []);
+    }
+
+    loadData();
+  }, []);
 
   const recipients = useMemo(() => {
-    if (target === "student") {
-      return students.filter((s) => s.id === selectedStudentId);
-    }
-
-    if (target === "dojo") {
-      return students.filter((s) => s.dojo_id === selectedDojoId);
-    }
-
+    if (target === "student") return students.filter((s) => s.id === selectedStudentId);
+    if (target === "dojo") return students.filter((s) => s.dojo_id === selectedDojoId);
     return students;
   }, [students, target, selectedStudentId, selectedDojoId]);
 
@@ -133,16 +117,11 @@ export default function EmailsPage() {
   }
 
   function openEmail() {
-    if (emailRecipients.length === 0) {
-      alert("Nie sú dostupné emailové adresy.");
-      return;
-    }
+    if (emailRecipients.length === 0) return alert("Nie sú dostupné emailové adresy.");
 
-    const url = `mailto:${emailRecipients.join(",")}?subject=${encodeURIComponent(
+    window.location.href = `mailto:${emailRecipients.join(",")}?subject=${encodeURIComponent(
       subject
     )}&body=${encodeURIComponent(message)}`;
-
-    window.location.href = url;
   }
 
   function formatPhone(phone: string) {
@@ -180,9 +159,7 @@ export default function EmailsPage() {
           >
             <option value="student">Jednotlivec</option>
             <option value="dojo">Celé dojo</option>
-            <option value="all">
-              {isAdmin ? "Všetky dojo" : "Všetky moje dojo"}
-            </option>
+            <option value="all">{isAdmin ? "Všetky dojo" : "Všetky moje dojo"}</option>
           </select>
 
           {target === "student" && (
@@ -279,12 +256,10 @@ export default function EmailsPage() {
           <p className="text-black/60">Príjemcovia</p>
           <h2 className="text-4xl font-black">{recipients.length}</h2>
         </div>
-
         <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
           <p className="text-black/60">Email adresy</p>
           <h2 className="text-4xl font-black">{emailRecipients.length}</h2>
         </div>
-
         <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
           <p className="text-black/60">WhatsApp čísla</p>
           <h2 className="text-4xl font-black">{phoneRecipients.length}</h2>
@@ -295,15 +270,12 @@ export default function EmailsPage() {
         <button onClick={openEmail} className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-red px-4 py-3 font-bold text-white">
           <Mail size={18} /> Otvoriť email
         </button>
-
         <button onClick={() => copy(emailRecipients.join(", "))} className="inline-flex items-center justify-center gap-2 rounded-xl bg-black px-4 py-3 font-bold text-white">
           <Copy size={18} /> Kopírovať emaily
         </button>
-
         <button onClick={() => copy(message)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-black px-4 py-3 font-bold text-white">
           <Copy size={18} /> Kopírovať text
         </button>
-
         <button onClick={() => copy(htmlMessage)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-black px-4 py-3 font-bold text-white">
           <Copy size={18} /> Kopírovať HTML
         </button>
@@ -327,7 +299,6 @@ export default function EmailsPage() {
                   <p className="font-bold">{r.name}</p>
                   <p className="text-sm text-black/60">{r.phone}</p>
                 </div>
-
                 <div className="flex items-center gap-2 rounded-xl bg-[#25D366] px-3 py-2 font-bold text-white">
                   <MessageCircle size={18} />
                   WhatsApp
