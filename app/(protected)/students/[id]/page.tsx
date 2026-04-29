@@ -14,11 +14,8 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const canEdit =
-    permissions?.can_add_students || permissions?.can_manage_trainers;
-
-  const canDelete =
-    permissions?.can_delete_students || permissions?.can_manage_trainers;
+  const canEdit = permissions?.can_add_students || permissions?.can_manage_trainers;
+  const canDelete = permissions?.can_delete_students || permissions?.can_manage_trainers;
 
   async function loadData() {
     const supabase = createClient();
@@ -30,8 +27,6 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
       .single();
 
     const dojosRes = await supabase.from("dojos").select("*").order("name");
-
-    if (studentRes.error) console.error(studentRes.error);
 
     setStudent(studentRes.data);
     setDojos(dojosRes.data || []);
@@ -49,11 +44,10 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
     }));
   }
 
+  const isAdult = student?.is_adult === true;
+
   async function saveStudent() {
-    if (!canEdit) {
-      alert("Nemáš oprávnenie upravovať žiaka.");
-      return;
-    }
+    if (!canEdit) return alert("Nemáš oprávnenie upravovať žiaka.");
 
     setSaving(true);
     const supabase = createClient();
@@ -66,6 +60,7 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
         first_name: payload.first_name || null,
         last_name: payload.last_name || null,
         birth_year: payload.birth_year ? Number(payload.birth_year) : null,
+        is_adult: !!payload.is_adult,
         parent_name: payload.parent_name || null,
         parent_phone: payload.parent_phone || null,
         parent_email: payload.parent_email || null,
@@ -80,22 +75,15 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
 
     setSaving(false);
 
-    if (error) {
-      alert(error.message);
-      return;
-    }
+    if (error) return alert(error.message);
 
-    alert("Žiak uložený.");
+    alert("Cvičiaci uložený.");
     loadData();
   }
 
   async function deleteStudent() {
-    if (!canDelete) {
-      alert("Nemáš oprávnenie vymazať žiaka.");
-      return;
-    }
-
-    if (!confirm("Naozaj vymazať/deaktivovať žiaka?")) return;
+    if (!canDelete) return alert("Nemáš oprávnenie vymazať cvičiaceho.");
+    if (!confirm("Naozaj deaktivovať cvičiaceho?")) return;
 
     const supabase = createClient();
 
@@ -104,25 +92,24 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
       .update({ active: false })
       .eq("id", params.id);
 
-    if (error) {
-      alert(error.message);
-      return;
-    }
+    if (error) return alert(error.message);
 
-    alert("Žiak bol deaktivovaný.");
+    alert("Cvičiaci bol deaktivovaný.");
     window.location.href = "/students";
   }
 
   const inputClass =
-  "box-border h-[52px] w-full max-w-full min-w-0 appearance-none rounded-2xl border border-black/10 bg-[#fafafa] px-4 text-[16px] outline-none focus:border-[#d71920] focus:bg-white";
+    "box-border h-[52px] w-full max-w-full min-w-0 appearance-none rounded-2xl border border-black/10 bg-[#fafafa] px-4 text-[16px] outline-none focus:border-[#d71920] focus:bg-white disabled:opacity-60";
+
+  const labelClass = "mb-1 block text-sm font-bold text-black/60";
 
   const textAreaClass =
-    "min-h-[110px] w-full rounded-2xl border border-black/10 bg-[#fafafa] px-4 py-3 text-[16px] outline-none focus:border-[#d71920] focus:bg-white";
+    "min-h-[110px] w-full rounded-2xl border border-black/10 bg-[#fafafa] px-4 py-3 text-[16px] outline-none focus:border-[#d71920] focus:bg-white disabled:opacity-60";
 
   if (loading) {
     return (
       <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40">
-        Načítavam profil žiaka...
+        Načítavam profil...
       </div>
     );
   }
@@ -130,7 +117,7 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
   if (!student) {
     return (
       <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40">
-        Žiak sa nenašiel.
+        Cvičiaci sa nenašiel.
       </div>
     );
   }
@@ -148,90 +135,165 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
       </div>
 
       <div className="rounded-[26px] bg-white p-5 shadow-sm ring-1 ring-black/5 space-y-4">
-        <h2 className="text-2xl font-extrabold">Upraviť žiaka</h2>
+        <h2 className="text-2xl font-extrabold">Upraviť cvičiaceho</h2>
+
+        <div className="grid grid-cols-2 gap-2 rounded-2xl bg-[#f7f2e8] p-2">
+          <button
+            type="button"
+            disabled={!canEdit}
+            onClick={() => updateField("is_adult", false)}
+            className={`rounded-xl px-4 py-3 font-bold ${
+              !isAdult ? "bg-[#d71920] text-white" : "bg-white text-black"
+            }`}
+          >
+            Dieťa
+          </button>
+
+          <button
+            type="button"
+            disabled={!canEdit}
+            onClick={() => updateField("is_adult", true)}
+            className={`rounded-xl px-4 py-3 font-bold ${
+              isAdult ? "bg-[#d71920] text-white" : "bg-white text-black"
+            }`}
+          >
+            Dospelý
+          </button>
+        </div>
 
         <div className="grid gap-3 md:grid-cols-2">
-          <input
-            className={inputClass}
-            placeholder="Meno"
-            value={student.first_name || ""}
-            disabled={!canEdit}
-            onChange={(e) => updateField("first_name", e.target.value)}
-          />
+          <div>
+            <label className={labelClass}>
+              {isAdult ? "Meno dospelého cvičiaceho" : "Meno dieťaťa"}
+            </label>
+            <input
+              className={inputClass}
+              value={student.first_name || ""}
+              disabled={!canEdit}
+              onChange={(e) => updateField("first_name", e.target.value)}
+            />
+          </div>
 
-          <input
-            className={inputClass}
-            placeholder="Priezvisko"
-            value={student.last_name || ""}
-            disabled={!canEdit}
-            onChange={(e) => updateField("last_name", e.target.value)}
-          />
+          <div>
+            <label className={labelClass}>
+              {isAdult ? "Priezvisko dospelého cvičiaceho" : "Priezvisko dieťaťa"}
+            </label>
+            <input
+              className={inputClass}
+              value={student.last_name || ""}
+              disabled={!canEdit}
+              onChange={(e) => updateField("last_name", e.target.value)}
+            />
+          </div>
 
-          <input
-            className={inputClass}
-            placeholder="Rok narodenia"
-            type="number"
-            value={student.birth_year || ""}
-            disabled={!canEdit}
-            onChange={(e) => updateField("birth_year", e.target.value)}
-          />
+          <div>
+            <label className={labelClass}>Rok narodenia</label>
+            <input
+              className={inputClass}
+              type="number"
+              value={student.birth_year || ""}
+              disabled={!canEdit}
+              onChange={(e) => updateField("birth_year", e.target.value)}
+            />
+          </div>
 
-          <select
-            className={inputClass}
-            value={student.dojo_id || ""}
-            disabled={!canEdit}
-            onChange={(e) => updateField("dojo_id", e.target.value)}
-          >
-            <option value="">Bez dojo</option>
-            {dojos.map((dojo) => (
-              <option key={dojo.id} value={dojo.id}>
-                {dojo.name}
-              </option>
-            ))}
-          </select>
+          <div>
+            <label className={labelClass}>Dojo</label>
+            <select
+              className={inputClass}
+              value={student.dojo_id || ""}
+              disabled={!canEdit}
+              onChange={(e) => updateField("dojo_id", e.target.value)}
+            >
+              <option value="">Bez dojo</option>
+              {dojos.map((dojo) => (
+                <option key={dojo.id} value={dojo.id}>
+                  {dojo.name}
+                </option>
+              ))}
+            </select>
+          </div>
 
-          <input
-  className={inputClass}
-  placeholder="Technický stupeň"
-  value={student.technical_grade || ""}
-  disabled={!canEdit}
-  onChange={(e) => updateField("technical_grade", e.target.value)}
-/>
+          <div>
+            <label className={labelClass}>Technický stupeň</label>
+            <input
+              className={inputClass}
+              value={student.technical_grade || ""}
+              disabled={!canEdit}
+              onChange={(e) => updateField("technical_grade", e.target.value)}
+            />
+          </div>
 
-<div className="w-full min-w-0 overflow-hidden">
-  <input
-    type="date"
-    className={inputClass}
-    value={student.last_grading_date || ""}
-    disabled={!canEdit}
-    onChange={(e) => updateField("last_grading_date", e.target.value)}
-  />
-</div>
+          <div>
+            <label className={labelClass}>
+              Dátum posledného skúšania / páskovania
+            </label>
+            <input
+              type="date"
+              className={inputClass}
+              value={student.last_grading_date || ""}
+              disabled={!canEdit}
+              onChange={(e) => updateField("last_grading_date", e.target.value)}
+            />
+          </div>
 
-          <input
-            className={inputClass}
-            placeholder="Meno rodiča"
-            value={student.parent_name || ""}
-            disabled={!canEdit}
-            onChange={(e) => updateField("parent_name", e.target.value)}
-          />
+          {isAdult ? (
+            <>
+              <div>
+                <label className={labelClass}>Telefón cvičiaceho</label>
+                <input
+                  className={inputClass}
+                  value={student.parent_phone || ""}
+                  disabled={!canEdit}
+                  onChange={(e) => updateField("parent_phone", e.target.value)}
+                />
+              </div>
 
-          <input
-            className={inputClass}
-            placeholder="Telefón rodiča"
-            value={student.parent_phone || ""}
-            disabled={!canEdit}
-            onChange={(e) => updateField("parent_phone", e.target.value)}
-          />
+              <div>
+                <label className={labelClass}>Email cvičiaceho</label>
+                <input
+                  className={inputClass}
+                  type="email"
+                  value={student.parent_email || ""}
+                  disabled={!canEdit}
+                  onChange={(e) => updateField("parent_email", e.target.value)}
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <label className={labelClass}>Meno a priezvisko rodiča</label>
+                <input
+                  className={inputClass}
+                  value={student.parent_name || ""}
+                  disabled={!canEdit}
+                  onChange={(e) => updateField("parent_name", e.target.value)}
+                />
+              </div>
 
-          <input
-            className="h-[52px] w-full rounded-2xl border border-black/10 bg-[#fafafa] px-4 text-[16px] outline-none focus:border-[#d71920] focus:bg-white md:col-span-2"
-            placeholder="Email rodiča"
-            type="email"
-            value={student.parent_email || ""}
-            disabled={!canEdit}
-            onChange={(e) => updateField("parent_email", e.target.value)}
-          />
+              <div>
+                <label className={labelClass}>Telefón rodiča</label>
+                <input
+                  className={inputClass}
+                  value={student.parent_phone || ""}
+                  disabled={!canEdit}
+                  onChange={(e) => updateField("parent_phone", e.target.value)}
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className={labelClass}>Email rodiča</label>
+                <input
+                  className={inputClass}
+                  type="email"
+                  value={student.parent_email || ""}
+                  disabled={!canEdit}
+                  onChange={(e) => updateField("parent_email", e.target.value)}
+                />
+              </div>
+            </>
+          )}
         </div>
 
         <textarea
@@ -276,7 +338,7 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
               className="inline-flex h-[54px] items-center justify-center gap-2 rounded-2xl bg-black px-4 font-bold text-white active:scale-[0.98]"
             >
               <Trash2 size={20} />
-              Deaktivovať žiaka
+              Deaktivovať cvičiaceho
             </button>
           )}
         </div>
