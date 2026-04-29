@@ -4,6 +4,8 @@ import { createClient } from "@/lib/supabase/browser";
 import { Copy, Mail, MessageCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+const ADMIN_EMAIL = "mino.poliak@gmail.com";
+
 export default function EmailsPage() {
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -20,78 +22,76 @@ export default function EmailsPage() {
   );
 
   async function loadData() {
-  const supabase = createClient();
+    const supabase = createClient();
 
-  const { data: userData } = await supabase.auth.getUser();
-  const email = userData.user?.email;
+    const { data: userData } = await supabase.auth.getUser();
+    const email = userData.user?.email || "";
 
-  if (!email) return;
+    const admin = email === ADMIN_EMAIL;
+    setIsAdmin(admin);
 
-  const { data: trainer } = await supabase
-    .from("trainers")
-    .select("*")
-    .eq("email", email)
-    .single();
+    const { data: trainer } = await supabase
+      .from("trainers")
+      .select("*")
+      .eq("email", email)
+      .single();
 
-  if (!trainer) {
-    setDojos([]);
-    setStudents([]);
-    return;
-  }
+    if (!trainer && !admin) {
+      setDojos([]);
+      setStudents([]);
+      return;
+    }
 
-  const admin = !!trainer.can_manage_trainers;
-  setIsAdmin(admin);
+    if (admin) {
+      const [dojosRes, studentsRes] = await Promise.all([
+        supabase.from("dojos").select("*").order("name"),
+        supabase
+          .from("students")
+          .select("*, dojos(name)")
+          .eq("active", true)
+          .order("last_name"),
+      ]);
 
-  if (admin) {
+      setDojos(dojosRes.data || []);
+      setStudents(studentsRes.data || []);
+      return;
+    }
+
+    const { data: links } = await supabase
+      .from("trainer_dojos")
+      .select("dojo_id")
+      .eq("trainer_id", trainer.id);
+
+    const allowedDojoIds = (links || []).map((l: any) => l.dojo_id);
+
+    if (allowedDojoIds.length === 0) {
+      setDojos([]);
+      setStudents([]);
+      return;
+    }
+
     const [dojosRes, studentsRes] = await Promise.all([
-      supabase.from("dojos").select("*").order("name"),
+      supabase
+        .from("dojos")
+        .select("*")
+        .in("id", allowedDojoIds)
+        .order("name"),
+
       supabase
         .from("students")
         .select("*, dojos(name)")
         .eq("active", true)
+        .in("dojo_id", allowedDojoIds)
         .order("last_name"),
     ]);
 
     setDojos(dojosRes.data || []);
     setStudents(studentsRes.data || []);
-    return;
   }
-
-  const { data: links } = await supabase
-    .from("trainer_dojos")
-    .select("dojo_id")
-    .eq("trainer_id", trainer.id);
-
-  const allowedDojoIds = (links || []).map((l: any) => l.dojo_id);
-
-  if (allowedDojoIds.length === 0) {
-    setDojos([]);
-    setStudents([]);
-    return;
-  }
-
-  const [dojosRes, studentsRes] = await Promise.all([
-    supabase
-      .from("dojos")
-      .select("*")
-      .in("id", allowedDojoIds)
-      .order("name"),
-
-    supabase
-      .from("students")
-      .select("*, dojos(name)")
-      .eq("active", true)
-      .in("dojo_id", allowedDojoIds)
-      .order("last_name"),
-  ]);
-
-  setDojos(dojosRes.data || []);
-  setStudents(studentsRes.data || []);
-}
 
   useEffect(() => {
-  loadData();
-}, []);
+    loadData();
+  }, []);
 
   const recipients = useMemo(() => {
     if (target === "student") {
@@ -264,13 +264,6 @@ export default function EmailsPage() {
             className="w-full rounded-xl border bg-black p-4 font-mono text-sm text-green-300"
           />
         )}
-
-        {mode === "html" && (
-          <p className="mt-2 text-sm text-black/60">
-            HTML kód je vytvorený automaticky z textu. Skopíruješ ho tlačidlom
-            nižšie.
-          </p>
-        )}
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
@@ -291,31 +284,19 @@ export default function EmailsPage() {
       </div>
 
       <div className="grid gap-3 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10 md:grid-cols-4">
-        <button
-          onClick={openEmail}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-red px-4 py-3 font-bold text-white"
-        >
+        <button onClick={openEmail} className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-red px-4 py-3 font-bold text-white">
           <Mail size={18} /> Otvoriť email
         </button>
 
-        <button
-          onClick={() => copy(emailRecipients.join(", "))}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-black px-4 py-3 font-bold text-white"
-        >
+        <button onClick={() => copy(emailRecipients.join(", "))} className="inline-flex items-center justify-center gap-2 rounded-xl bg-black px-4 py-3 font-bold text-white">
           <Copy size={18} /> Kopírovať emaily
         </button>
 
-        <button
-          onClick={() => copy(message)}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-black px-4 py-3 font-bold text-white"
-        >
+        <button onClick={() => copy(message)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-black px-4 py-3 font-bold text-white">
           <Copy size={18} /> Kopírovať text
         </button>
 
-        <button
-          onClick={() => copy(htmlMessage)}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-black px-4 py-3 font-bold text-white"
-        >
+        <button onClick={() => copy(htmlMessage)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-black px-4 py-3 font-bold text-white">
           <Copy size={18} /> Kopírovať HTML
         </button>
       </div>
