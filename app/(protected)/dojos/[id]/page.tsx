@@ -11,12 +11,29 @@ export default function DojoDetailPage({ params }: { params: { id: string } }) {
   useEffect(() => {
     const supabase = createClient();
 
-    supabase.from("dojos").select("*").eq("id", params.id).single()
+    supabase
+      .from("dojos")
+      .select("*")
+      .eq("id", params.id)
+      .single()
       .then(({ data }) => setDojo(data));
 
-    supabase.from("students").select("*").eq("dojo_id", params.id).eq("active", true).order("last_name")
+    supabase
+      .from("students")
+      .select("*")
+      .eq("dojo_id", params.id)
+      .eq("active", true)
+      .order("last_name")
       .then(({ data }) => setStudents(data || []));
   }, [params.id]);
+
+  function getContactPhone(student: any) {
+    return student.is_adult ? student.phone : student.parent_phone;
+  }
+
+  function getContactLabel(student: any) {
+    return student.is_adult ? "Kontakt cvičiaceho" : "Kontakt rodiča";
+  }
 
   if (!dojo) return <p>Načítavam...</p>;
 
@@ -29,14 +46,22 @@ export default function DojoDetailPage({ params }: { params: { id: string } }) {
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <Link href={`/students/new?dojo=${params.id}`} className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
+        <Link
+          href={`/students/new?dojo=${params.id}`}
+          className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10"
+        >
           <h2 className="text-xl font-bold">+ Pridať žiaka</h2>
           <p className="mt-2 text-black/60">Nový žiak do tohto dojo.</p>
         </Link>
 
-        <Link href={`/dojos/${params.id}/attendance`} className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
+        <Link
+          href={`/dojos/${params.id}/attendance`}
+          className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10"
+        >
           <h2 className="text-xl font-bold">Prezenčka</h2>
-          <p className="mt-2 text-black/60">Mesiace, dátumy tréningov a dochádzka.</p>
+          <p className="mt-2 text-black/60">
+            Mesiace, dátumy tréningov a dochádzka.
+          </p>
         </Link>
 
         <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
@@ -52,23 +77,38 @@ export default function DojoDetailPage({ params }: { params: { id: string } }) {
           <p>Zatiaľ tu nie sú žiadni žiaci.</p>
         ) : (
           <div className="grid gap-3">
-            {students.map((student) => (
-              <Link
-                key={student.id}
-                href={`/students/${student.id}`}
-                className="rounded-2xl border border-black/10 p-4 hover:bg-brand-cream"
-              >
-                <p className="text-lg font-bold">
-                  {student.first_name} {student.last_name}
-                </p>
-                <p className="text-sm text-black/60">
-                  {student.technical_grade || "Bez technického stupňa"}
-                </p>
-              </Link>
-            ))}
+            {students.map((student) => {
+              const phone = getContactPhone(student);
+
+              return (
+                <div
+                  key={student.id}
+                  className="rounded-2xl border border-black/10 p-4 hover:bg-brand-cream"
+                >
+                  <Link href={`/students/${student.id}`} className="block">
+                    <p className="text-lg font-bold">
+                      {student.first_name} {student.last_name}
+                    </p>
+
+                    <p className="text-sm text-black/60">
+                      {student.technical_grade || "Bez technického stupňa"}
+                    </p>
+                  </Link>
+
+                  {phone && (
+                    <a
+                      href={`tel:${phone}`}
+                      className="mt-3 inline-flex rounded-xl bg-[#d71920] px-3 py-2 text-sm font-bold text-white"
+                    >
+                      📞 {getContactLabel(student)}: {phone}
+                    </a>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
     </div>
   );
-}  
+}
