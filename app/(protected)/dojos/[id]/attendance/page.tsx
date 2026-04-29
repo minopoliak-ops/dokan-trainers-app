@@ -1,6 +1,7 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/browser";
+import { usePermissions } from "@/lib/usePermissions";
 import { Check, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -18,12 +19,21 @@ const weekDays = [
 ];
 
 export default function AttendancePage({ params }: { params: { id: string } }) {
+  const { permissions } = usePermissions();
+
   const [dojo, setDojo] = useState<any>(null);
   const [students, setStudents] = useState<any[]>([]);
   const [topics, setTopics] = useState<any[]>([]);
   const [trainings, setTrainings] = useState<any[]>([]);
   const [attendance, setAttendance] = useState<any[]>([]);
   const [blackouts, setBlackouts] = useState<any[]>([]);
+
+  const [allowed, setAllowed] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const isAdmin = !!permissions?.can_manage_trainers;
+  const canWriteAttendance = !!permissions?.can_attendance || isAdmin;
+  const canCreateTrainings = !!permissions?.can_create_trainings || isAdmin;
 
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const d = new Date();
@@ -43,11 +53,43 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
   const monthEnd = useMemo(() => {
     const [year, month] = selectedMonth.split("-").map(Number);
     const lastDay = new Date(year, month, 0).getDate();
-    return `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+    return `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(
+      2,
+      "0"
+    )}`;
   }, [selectedMonth]);
 
+  async function checkAccess(supabase: any) {
+    if (!permissions) return false;
+
+    if (isAdmin) return true;
+
+    const { data: link } = await supabase
+      .from("trainer_dojos")
+      .select("id")
+      .eq("trainer_id", permissions.id)
+      .eq("dojo_id", params.id)
+      .maybeSingle();
+
+    return !!link;
+  }
+
   async function loadData() {
+    if (!permissions) return;
+
+    setLoading(true);
+
     const supabase = createClient();
+
+    const hasAccess = await checkAccess(supabase);
+
+    if (!hasAccess) {
+      setAllowed(false);
+      setLoading(false);
+      return;
+    }
+
+    setAllowed(true);
 
     const dojoResult = await supabase
       .from("dojos")
@@ -76,13 +118,18 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
       .lte("training_date", monthEnd)
       .order("training_date");
 
-    const attendanceResult = await supabase.from("attendance").select("*");
-
     const blackoutResult = await supabase
       .from("training_blackout_dates")
       .select("*")
       .gte("date", monthStart)
       .lte("date", monthEnd);
+
+    const trainingIds = (trainingsResult.data || []).map((t: any) => t.id);
+
+    const attendanceResult =
+      trainingIds.length > 0
+        ? await supabase.from("attendance").select("*").in("training_id", trainingIds)
+        : { data: [], error: null };
 
     if (dojoResult.error) console.error(dojoResult.error);
     if (studentsResult.error) console.error(studentsResult.error);
@@ -97,19 +144,32 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
     setTrainings(trainingsResult.data || []);
     setAttendance(attendanceResult.data || []);
     setBlackouts(blackoutResult.data || []);
+
+    setLoading(false);
   }
 
   useEffect(() => {
     loadData();
-  }, [params.id, selectedMonth]);
+  }, [permissions, selectedMonth, params.id]);
 
   async function addTraining() {
+    if (!canCreateTrainings) {
+      alert("Nemáš oprávnenie vytvárať tréningy.");
+      return;
+    }
+
     if (!trainingDate) {
       alert("Vyber dátum tréningu.");
       return;
     }
 
     const supabase = createClient();
+
+    const hasAccess = await checkAccess(supabase);
+    if (!hasAccess) {
+      alert("Nemáš oprávnenie pre toto dojo.");
+      return;
+    }
 
     const { error } = await supabase.from("trainings").upsert(
       {
@@ -133,8 +193,21 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
   }
 
   async function generateTrainings() {
+    if (!canCreateTrainings) {
+      alert("Nemáš oprávnenie vytvárať tréningy.");
+      return;
+    }
+
     if (generateDays.length === 0) {
       alert("Vyber aspoň jeden deň v týždni.");
+      return;
+    }
+
+    const supabase = createClient();
+
+    const hasAccess = await checkAccess(supabase);
+    if (!hasAccess) {
+      alert("Nemáš oprávnenie pre toto dojo.");
       return;
     }
 
@@ -151,7 +224,9 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
 
       if (!generateDays.includes(weekday)) continue;
 
-      const dateString = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      const dateString = `${year}-${String(month).padStart(2, "0")}-${String(
+        day
+      ).padStart(2, "0")}`;
 
       if (blackoutMap.has(dateString)) {
         skipped.push(`${dateString} - ${blackoutMap.get(dateString)}`);
@@ -170,8 +245,6 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
       alert("Nenašli sa žiadne tréningové dátumy v tomto mesiaci.");
       return;
     }
-
-    const supabase = createClient();
 
     const { error } = await supabase.from("trainings").upsert(rows, {
       onConflict: "dojo_id,training_date",
@@ -208,7 +281,19 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
   }
 
   async function cycleAttendance(trainingId: string, studentId: string) {
+    if (!canWriteAttendance) {
+      alert("Nemáš oprávnenie zapisovať prezenčku.");
+      return;
+    }
+
     const supabase = createClient();
+
+    const hasAccess = await checkAccess(supabase);
+    if (!hasAccess) {
+      alert("Nemáš oprávnenie pre toto dojo.");
+      return;
+    }
+
     const current = getAttendance(trainingId, studentId);
 
     if (!current) {
@@ -255,12 +340,34 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
     return `${d.getDate()}.${d.getMonth() + 1}.`;
   }
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40">
+        Načítavam...
+      </div>
+    );
+  }
+
+  if (!allowed) {
+    return (
+      <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40">
+        <div className="rounded-3xl bg-white p-6 text-center shadow-sm">
+          Nemáš oprávnenie vidieť túto prezenčku.
+        </div>
+      </div>
+    );
+  }
+
   if (!dojo) {
-    return <p>Načítavam...</p>;
+    return (
+      <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40">
+        Dojo sa nenašlo.
+      </div>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-28 space-y-6">
+    <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40 space-y-6">
       <div className="rounded-3xl bg-brand-black p-6 text-white shadow-lg">
         <p className="mb-2 text-sm text-white/60">Mesačná prezenčka</p>
         <h1 className="text-3xl font-bold">{dojo.name}</h1>
@@ -278,105 +385,115 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
         />
       </div>
 
-      <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
-        <h2 className="mb-4 text-2xl font-bold">
-          Automaticky vygenerovať tréningy
-        </h2>
+      {canCreateTrainings && (
+        <>
+          <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
+            <h2 className="mb-4 text-2xl font-bold">
+              Automaticky vygenerovať tréningy
+            </h2>
 
-        <div className="mb-4 flex flex-wrap gap-2">
-          {weekDays.map((day) => (
-            <button
-              key={day.value}
-              onClick={() => toggleGenerateDay(day.value)}
-              className={`rounded-xl px-4 py-2 font-bold ${
-                generateDays.includes(day.value)
-                  ? "bg-brand-red text-white"
-                  : "bg-black/10 text-black"
-              }`}
-            >
-              {day.label}
-            </button>
-          ))}
-        </div>
+            <div className="mb-4 flex flex-wrap gap-2">
+              {weekDays.map((day) => (
+                <button
+                  key={day.value}
+                  onClick={() => toggleGenerateDay(day.value)}
+                  className={`rounded-xl px-4 py-2 font-bold ${
+                    generateDays.includes(day.value)
+                      ? "bg-brand-red text-white"
+                      : "bg-black/10 text-black"
+                  }`}
+                >
+                  {day.label}
+                </button>
+              ))}
+            </div>
 
-        <div className="grid gap-3 md:grid-cols-3">
-          <input
-            value={generateTitle}
-            onChange={(e) => setGenerateTitle(e.target.value)}
-            placeholder="Názov tréningu"
-            className="rounded-xl border px-4 py-3"
-          />
+            <div className="grid gap-3 md:grid-cols-3">
+              <input
+                value={generateTitle}
+                onChange={(e) => setGenerateTitle(e.target.value)}
+                placeholder="Názov tréningu"
+                className="rounded-xl border px-4 py-3"
+              />
 
-          <select
-            value={generateTopicId}
-            onChange={(e) => setGenerateTopicId(e.target.value)}
-            className="rounded-xl border px-4 py-3"
-          >
-            <option value="">Bez témy</option>
-            {topics.map((topic) => (
-              <option key={topic.id} value={topic.id}>
-                {topic.name}
-              </option>
-            ))}
-          </select>
+              <select
+                value={generateTopicId}
+                onChange={(e) => setGenerateTopicId(e.target.value)}
+                className="rounded-xl border px-4 py-3"
+              >
+                <option value="">Bez témy</option>
+                {topics.map((topic) => (
+                  <option key={topic.id} value={topic.id}>
+                    {topic.name}
+                  </option>
+                ))}
+              </select>
 
-          <button
-            onClick={generateTrainings}
-            className="rounded-xl bg-brand-red px-4 py-3 font-bold text-white"
-          >
-            Vygenerovať mesiac
-          </button>
-        </div>
+              <button
+                onClick={generateTrainings}
+                className="rounded-xl bg-brand-red px-4 py-3 font-bold text-white"
+              >
+                Vygenerovať mesiac
+              </button>
+            </div>
 
-        <p className="mt-3 text-sm text-black/60">
-          Generovanie preskočí sviatky a prázdniny uložené v databáze.
-        </p>
-      </div>
+            <p className="mt-3 text-sm text-black/60">
+              Generovanie preskočí sviatky a prázdniny uložené v databáze.
+            </p>
+          </div>
 
-      <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
-        <h2 className="mb-4 text-2xl font-bold">
-          Pridať jeden tréning ručne
-        </h2>
+          <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
+            <h2 className="mb-4 text-2xl font-bold">
+              Pridať jeden tréning ručne
+            </h2>
 
-        <div className="grid gap-3 md:grid-cols-4">
-          <input
-            type="date"
-            value={trainingDate}
-            onChange={(e) => setTrainingDate(e.target.value)}
-            className="rounded-xl border px-4 py-3"
-          />
+            <div className="grid gap-3 md:grid-cols-4">
+              <input
+                type="date"
+                value={trainingDate}
+                onChange={(e) => setTrainingDate(e.target.value)}
+                className="rounded-xl border px-4 py-3"
+              />
 
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Názov tréningu"
-            className="rounded-xl border px-4 py-3"
-          />
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Názov tréningu"
+                className="rounded-xl border px-4 py-3"
+              />
 
-          <select
-            value={topicId}
-            onChange={(e) => setTopicId(e.target.value)}
-            className="rounded-xl border px-4 py-3"
-          >
-            <option value="">Bez témy</option>
-            {topics.map((topic) => (
-              <option key={topic.id} value={topic.id}>
-                {topic.name}
-              </option>
-            ))}
-          </select>
+              <select
+                value={topicId}
+                onChange={(e) => setTopicId(e.target.value)}
+                className="rounded-xl border px-4 py-3"
+              >
+                <option value="">Bez témy</option>
+                {topics.map((topic) => (
+                  <option key={topic.id} value={topic.id}>
+                    {topic.name}
+                  </option>
+                ))}
+              </select>
 
-          <button
-            onClick={addTraining}
-            className="rounded-xl bg-brand-red px-4 py-3 font-bold text-white"
-          >
-            + Pridať tréning
-          </button>
-        </div>
-      </div>
+              <button
+                onClick={addTraining}
+                className="rounded-xl bg-brand-red px-4 py-3 font-bold text-white"
+              >
+                + Pridať tréning
+              </button>
+            </div>
+          </div>
+        </>
+      )}
 
       <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-black/10 sm:p-6">
         <h2 className="mb-4 text-2xl font-bold">Prezenčka za mesiac</h2>
+
+        {!canWriteAttendance && (
+          <p className="mb-4 rounded-2xl bg-yellow-50 p-4 text-sm font-semibold text-yellow-800">
+            Máš iba náhľad prezenčky. Nemáš oprávnenie zapisovať dochádzku.
+          </p>
+        )}
 
         {trainings.length === 0 ? (
           <p className="rounded-2xl bg-brand-cream p-6 text-center">
@@ -434,10 +551,11 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
                           className="border-b p-3 text-center"
                         >
                           <button
+                            disabled={!canWriteAttendance}
                             onClick={() =>
                               cycleAttendance(training.id, student.id)
                             }
-                            className={`mx-auto flex h-12 w-12 items-center justify-center rounded-xl text-white ${
+                            className={`mx-auto flex h-12 w-12 items-center justify-center rounded-xl text-white disabled:opacity-50 ${
                               status === "present"
                                 ? "bg-green-600"
                                 : status === "absent"
@@ -460,11 +578,11 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
       </div>
 
       <Link
-  href={`/dojos/${params.id}`}
-  className="inline-flex w-full items-center justify-center rounded-2xl bg-[#d71920] px-4 py-4 text-center font-bold text-white shadow-[0_6px_14px_rgba(215,25,32,0.25)] active:scale-[0.98]"
->
-  Späť do dojo
-</Link>
+        href={`/dojos/${params.id}`}
+        className="inline-flex w-full items-center justify-center rounded-2xl bg-[#d71920] px-4 py-4 text-center font-bold text-white shadow-[0_6px_14px_rgba(215,25,32,0.25)] active:scale-[0.98]"
+      >
+        Späť do dojo
+      </Link>
     </div>
   );
 }
