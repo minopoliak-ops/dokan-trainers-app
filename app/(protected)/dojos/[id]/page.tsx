@@ -223,9 +223,22 @@ export default function DojoDetailPage({ params }: { params: { id: string } }) {
         </Link>
 
         <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
-          <h2 className="text-xl font-bold">Tréningy</h2>
-          <p className="mt-2 text-black/60">Časy, mapa a navigácia.</p>
-        </div>
+  <h2 className="text-xl font-bold">Tréningy</h2>
+
+  <p className="mt-2 whitespace-pre-line text-sm font-semibold text-black/70">
+    {dojo.training_schedule || "Časy tréningov ešte nie sú vyplnené."}
+  </p>
+
+  {dojo.map_url && (
+    <a
+      href={dojo.map_url}
+      target="_blank"
+      className="mt-4 inline-flex rounded-xl bg-[#d71920] px-3 py-2 text-sm font-bold text-white"
+    >
+      Mapa / navigácia
+    </a>
+  )}
+</div>
       </div>
 
       <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
