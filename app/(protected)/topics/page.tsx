@@ -1,10 +1,15 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/browser";
+import { usePermissions } from "@/lib/usePermissions";
 import { Trash2 } from "lucide-react";
-import { FormEvent, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 export default function TopicsPage() {
+  const { permissions } = usePermissions();
+  const canManageTopics =
+    !!permissions?.can_manage_topics || !!permissions?.can_manage_trainers;
+
   const [topics, setTopics] = useState<any[]>([]);
 
   async function loadTopics() {
@@ -15,44 +20,48 @@ export default function TopicsPage() {
       .select("*")
       .order("name");
 
-    if (error) {
-      alert(error.message);
-      return;
-    }
+    if (error) return alert(error.message);
 
     setTopics(data || []);
   }
 
   useEffect(() => {
-    loadTopics();
-  }, []);
+    if (canManageTopics) loadTopics();
+  }, [canManageTopics]);
 
-  async function addTopic(e: React.FormEvent<HTMLFormElement>) {
-  e.preventDefault();
-
-  const formElement = e.currentTarget;
-  const form = new FormData(formElement);
-  const supabase = createClient();
-
-  const name = String(form.get("name") || "").trim();
-  const description = String(form.get("description") || "").trim();
-
-  if (!name) return;
-
-  const { error } = await supabase.from("training_topics").insert({
-    name,
-    description,
-    active: true,
-  });
-
-  if (error) {
-    alert(error.message);
-    return;
+  if (permissions && !canManageTopics) {
+    return (
+      <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40">
+        <div className="rounded-3xl bg-white p-6 text-center shadow-sm">
+          Nemáš oprávnenie spravovať témy.
+        </div>
+      </div>
+    );
   }
 
-  formElement.reset();
-  loadTopics();
-}
+  async function addTopic(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+
+    const formElement = e.currentTarget;
+    const form = new FormData(formElement);
+    const supabase = createClient();
+
+    const name = String(form.get("name") || "").trim();
+    const description = String(form.get("description") || "").trim();
+
+    if (!name) return;
+
+    const { error } = await supabase.from("training_topics").insert({
+      name,
+      description,
+      active: true,
+    });
+
+    if (error) return alert(error.message);
+
+    formElement.reset();
+    loadTopics();
+  }
 
   async function deleteTopic(id: string) {
     if (!confirm("Naozaj chceš odstrániť túto tému?")) return;
@@ -64,10 +73,7 @@ export default function TopicsPage() {
       .delete()
       .eq("id", id);
 
-    if (error) {
-      alert(error.message);
-      return;
-    }
+    if (error) return alert(error.message);
 
     loadTopics();
   }
@@ -111,7 +117,9 @@ export default function TopicsPage() {
           >
             <div>
               <p className="text-xl font-bold">{topic.name}</p>
-              <p className="text-black/60">{topic.description || "Bez popisu"}</p>
+              <p className="text-black/60">
+                {topic.description || "Bez popisu"}
+              </p>
             </div>
 
             <button
