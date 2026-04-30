@@ -11,17 +11,16 @@ export function usePermissions() {
 
   useEffect(() => {
     async function load() {
-      setLoading(true);
-
       const supabase = createClient();
 
-      const { data: userData } = await supabase.auth.getUser();
+      const { data: userData, error: userError } = await supabase.auth.getUser();
       const userEmail = userData.user?.email || "";
-      const userId = userData.user?.id || "";
+
+      console.log("USER:", userEmail, userData.user?.id, userError);
 
       setEmail(userEmail);
 
-      if (!userEmail || !userId) {
+      if (!userEmail) {
         setPermissions(null);
         setDojoIds([]);
         setLoading(false);
@@ -31,11 +30,12 @@ export function usePermissions() {
       const { data: trainer, error: trainerError } = await supabase
         .from("trainers")
         .select("*")
-        .or(`email.eq.${userEmail},user_id.eq.${userId}`)
+        .eq("email", userEmail)
         .maybeSingle();
 
-      if (trainerError || !trainer) {
-        console.error("Trainer permissions error:", trainerError);
+      console.log("TRAINER:", trainer, trainerError);
+
+      if (!trainer || trainerError) {
         setPermissions(null);
         setDojoIds([]);
         setLoading(false);
@@ -44,39 +44,14 @@ export function usePermissions() {
 
       setPermissions(trainer);
 
-      const isAdmin = !!trainer.can_manage_trainers;
-
-      if (isAdmin) {
-        const { data: allDojos, error: allDojosError } = await supabase
-          .from("dojos")
-          .select("id")
-          .order("name");
-
-        if (allDojosError) {
-          console.error("Admin dojos error:", allDojosError);
-          setDojoIds([]);
-          setLoading(false);
-          return;
-        }
-
-        setDojoIds((allDojos || []).map((d: any) => d.id));
-        setLoading(false);
-        return;
-      }
-
-      const { data: dojoLinks, error: dojoLinksError } = await supabase
+      const { data: links, error: linksError } = await supabase
         .from("trainer_dojos")
         .select("dojo_id")
         .eq("trainer_id", trainer.id);
 
-      if (dojoLinksError) {
-        console.error("Trainer dojos error:", dojoLinksError);
-        setDojoIds([]);
-        setLoading(false);
-        return;
-      }
+      console.log("TRAINER DOJOS:", links, linksError);
 
-      setDojoIds((dojoLinks || []).map((d: any) => d.dojo_id));
+      setDojoIds((links || []).map((x: any) => x.dojo_id));
       setLoading(false);
     }
 
