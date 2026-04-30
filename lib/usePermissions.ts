@@ -12,11 +12,10 @@ export function usePermissions() {
 
   useEffect(() => {
     let alive = true;
+    setMounted(true);
 
     async function load() {
-      setMounted(true);
       setLoading(true);
-
       const supabase = createClient();
 
       const { data: userData, error: userError } = await supabase.auth.getUser();
@@ -44,6 +43,7 @@ export function usePermissions() {
       if (!alive) return;
 
       if (trainerError || !trainer) {
+        console.error("usePermissions trainer error:", trainerError);
         setPermissions(null);
         setDojoIds([]);
         setLoading(false);
@@ -60,6 +60,7 @@ export function usePermissions() {
       if (!alive) return;
 
       if (linksError) {
+        console.error("usePermissions trainer_dojos error:", linksError);
         setDojoIds([]);
       } else {
         setDojoIds((links || []).map((x: any) => x.dojo_id));
@@ -76,7 +77,7 @@ export function usePermissions() {
   }, []);
 
   return {
-    permissions: permissions || {},
+    permissions: permissions || null,
     email,
     dojoIds,
     loading,

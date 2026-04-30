@@ -6,15 +6,21 @@ import { Download, Upload, UserPlus, UserRound } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+export const dynamic = "force-dynamic";
+
 export default function StudentsPage() {
-  const { permissions, dojoIds } = usePermissions();
+  const { permissions, dojoIds, loading: permissionsLoading, mounted } = usePermissions();
   const [students, setStudents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const isAdmin = !!permissions?.can_manage_trainers;
+  const canAddStudents = !!permissions?.can_add_students || isAdmin;
+
   useEffect(() => {
     async function loadStudents() {
-      if (!permissions) return;
+      if (!mounted || permissionsLoading) return;
 
+      setLoading(true);
       const supabase = createClient();
 
       let query = supabase
@@ -23,25 +29,32 @@ export default function StudentsPage() {
         .eq("active", true)
         .order("last_name");
 
-      if (!permissions?.can_manage_trainers) {
+      if (!isAdmin) {
         if (dojoIds.length === 0) {
           setStudents([]);
           setLoading(false);
           return;
         }
-
         query = query.in("dojo_id", dojoIds);
       }
 
       const { data, error } = await query;
 
-      if (error) console.error(error);
-      setStudents(data || []);
+      if (error) {
+        console.error("Students load error:", error);
+        alert(error.message);
+        setStudents([]);
+      } else {
+        setStudents(data || []);
+      }
+
       setLoading(false);
     }
 
     loadStudents();
-  }, [permissions, dojoIds]);
+  }, [mounted, permissionsLoading, isAdmin, dojoIds]);
+
+  if (!mounted || permissionsLoading) return null;
 
   return (
     <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40 space-y-6">
@@ -53,16 +66,18 @@ export default function StudentsPage() {
         </p>
       </div>
 
-            <div className="grid gap-3">
-        <Link
-          href="/students/new"
-          className="flex items-center gap-3 rounded-3xl bg-white p-5 font-bold shadow-[0_8px_20px_rgba(0,0,0,0.08)] ring-1 ring-black/5 active:scale-[0.98]"
-        >
-          <UserPlus className="text-[#d71920]" />
-          Pridať žiaka
-        </Link>
+      <div className="grid gap-3">
+        {canAddStudents && (
+          <Link
+            href="/students/new"
+            className="flex items-center gap-3 rounded-3xl bg-white p-5 font-bold shadow-[0_8px_20px_rgba(0,0,0,0.08)] ring-1 ring-black/5 active:scale-[0.98]"
+          >
+            <UserPlus className="text-[#d71920]" />
+            Pridať žiaka
+          </Link>
+        )}
 
-        {permissions?.can_manage_trainers && (
+        {isAdmin && (
           <>
             <Link
               href="/students/import"
@@ -82,6 +97,7 @@ export default function StudentsPage() {
           </>
         )}
       </div>
+
       {loading && (
         <div className="rounded-3xl bg-white p-5 text-black/60 shadow-sm">
           Načítavam žiakov...
@@ -111,8 +127,7 @@ export default function StudentsPage() {
                   {student.first_name} {student.last_name}
                 </p>
                 <p className="text-sm text-black/50">
-                  {student.dojos?.name || "Bez dojo"} ·{" "}
-                  {student.technical_grade || "Bez stupňa"}
+                  {student.dojos?.name || "Bez dojo"} · {student.technical_grade || "Bez stupňa"}
                 </p>
               </div>
             </div>
