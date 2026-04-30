@@ -21,7 +21,7 @@ export function usePermissions() {
 
       setEmail(userEmail);
 
-      if (!userEmail) {
+      if (!userEmail || !userId) {
         setPermissions(null);
         setDojoIds([]);
         setLoading(false);
@@ -34,15 +34,8 @@ export function usePermissions() {
         .or(`email.eq.${userEmail},user_id.eq.${userId}`)
         .maybeSingle();
 
-      if (trainerError) {
+      if (trainerError || !trainer) {
         console.error("Trainer permissions error:", trainerError);
-        setPermissions(null);
-        setDojoIds([]);
-        setLoading(false);
-        return;
-      }
-
-      if (!trainer) {
         setPermissions(null);
         setDojoIds([]);
         setLoading(false);
@@ -51,13 +44,13 @@ export function usePermissions() {
 
       setPermissions(trainer);
 
-      const { data: dojoLinks, error: linksError } = await supabase
+      const { data: dojoLinks, error: dojoLinksError } = await supabase
         .from("trainer_dojos")
         .select("dojo_id")
         .eq("trainer_id", trainer.id);
 
-      if (linksError) {
-        console.error("Trainer dojos error:", linksError);
+      if (dojoLinksError) {
+        console.error("Trainer dojos error:", dojoLinksError);
         setDojoIds([]);
         setLoading(false);
         return;
@@ -71,8 +64,9 @@ export function usePermissions() {
   }, []);
 
   return {
-  permissions: permissions || {},
-  email,
-  dojoIds,
-  loading,
-};
+    permissions: permissions || {},
+    email,
+    dojoIds,
+    loading,
+  };
+}
