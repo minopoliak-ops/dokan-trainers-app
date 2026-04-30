@@ -31,13 +31,15 @@ const topicColors = [
 
 function topicColor(topicId?: string | null) {
   if (!topicId) return "bg-brand-cream border-black/5";
+
   let sum = 0;
   for (const char of topicId) sum += char.charCodeAt(0);
+
   return topicColors[sum % topicColors.length];
 }
 
 export default function AttendancePage({ params }: { params: { id: string } }) {
-  const { permissions } = usePermissions();
+  const { permissions, loading: permissionsLoading } = usePermissions();
 
   const [dojo, setDojo] = useState<any>(null);
   const [students, setStudents] = useState<any[]>([]);
@@ -64,7 +66,7 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
   const [topicId, setTopicId] = useState("");
   const [title, setTitle] = useState("Tréning");
 
-  const [generateDays, setGenerateDays] = useState<number[]>([1, 3]);
+  const [generateDays, setGenerateDays] = useState<number[]>([2, 4]);
   const [generateTopicId, setGenerateTopicId] = useState("");
   const [generateTitle, setGenerateTitle] = useState("Tréning");
 
@@ -74,36 +76,59 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
   const monthEnd = useMemo(() => {
     const [year, month] = selectedMonth.split("-").map(Number);
     const lastDay = new Date(year, month, 0).getDate();
-    return `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+
+    return `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(
+      2,
+      "0"
+    )}`;
   }, [selectedMonth]);
 
   const previousMonth = useMemo(() => {
     const [year, month] = selectedMonth.split("-").map(Number);
     const d = new Date(year, month - 2, 1);
+
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   }, [selectedMonth]);
 
   async function checkAccess(supabase: any) {
-    if (!permissions) return false;
-    if (isAdmin) return true;
+    if (permissionsLoading) return false;
 
-    const { data: link } = await supabase
+    const isAdminNow = !!permissions?.can_manage_trainers;
+
+    if (isAdminNow) return true;
+
+    if (!permissions?.id) return false;
+
+    const { data: link, error } = await supabase
       .from("trainer_dojos")
       .select("id")
       .eq("trainer_id", permissions.id)
       .eq("dojo_id", params.id)
       .maybeSingle();
 
+    if (error) {
+      console.error("Attendance access error:", error);
+      return false;
+    }
+
     return !!link;
   }
 
   async function loadData() {
-    if (!permissions) return;
+    if (permissionsLoading) return;
+
+    if (!permissions?.id) {
+      setAllowed(false);
+      setLoading(false);
+      return;
+    }
 
     setLoading(true);
+
     const supabase = createClient();
 
     const hasAccess = await checkAccess(supabase);
+
     if (!hasAccess) {
       setAllowed(false);
       setLoading(false);
@@ -116,7 +141,14 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
       .from("dojos")
       .select("*")
       .eq("id", params.id)
-      .single();
+      .maybeSingle();
+
+    if (dojoResult.error) {
+      console.error("Dojo error:", dojoResult.error);
+      setDojo(null);
+      setLoading(false);
+      return;
+    }
 
     const studentsResult = await supabase
       .from("students")
@@ -125,11 +157,19 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
       .eq("active", true)
       .order("last_name");
 
+    if (studentsResult.error) {
+      console.error("Students error:", studentsResult.error);
+    }
+
     const topicsResult = await supabase
       .from("training_topics")
       .select("*")
       .eq("active", true)
       .order("name");
+
+    if (topicsResult.error) {
+      console.error("Topics error:", topicsResult.error);
+    }
 
     const trainingsResult = await supabase
       .from("trainings")
@@ -139,11 +179,19 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
       .lte("training_date", monthEnd)
       .order("training_date");
 
+    if (trainingsResult.error) {
+      console.error("Trainings error:", trainingsResult.error);
+    }
+
     const blackoutResult = await supabase
       .from("training_blackout_dates")
       .select("*")
       .gte("date", monthStart)
       .lte("date", monthEnd);
+
+    if (blackoutResult.error) {
+      console.error("Blackouts error:", blackoutResult.error);
+    }
 
     const trainingIds = (trainingsResult.data || []).map((t: any) => t.id);
 
@@ -151,6 +199,10 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
       trainingIds.length > 0
         ? await supabase.from("attendance").select("*").in("training_id", trainingIds)
         : { data: [], error: null };
+
+    if (attendanceResult.error) {
+      console.error("Attendance error:", attendanceResult.error);
+    }
 
     setDojo(dojoResult.data);
     setStudents(studentsResult.data || []);
@@ -164,7 +216,7 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
 
   useEffect(() => {
     loadData();
-  }, [permissions, selectedMonth, params.id]);
+  }, [permissions, permissionsLoading, selectedMonth, params.id]);
 
   async function updateTrainingTopic(trainingId: string, newTopicId: string) {
     if (!canCreateTrainings) return;
@@ -318,7 +370,9 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
 
       if (!generateDays.includes(weekday)) continue;
 
-      const dateString = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      const dateString = `${year}-${String(month).padStart(2, "0")}-${String(
+        day
+      ).padStart(2, "0")}`;
 
       if (blackoutMap.has(dateString)) {
         skipped.push(`${dateString} - ${blackoutMap.get(dateString)}`);
@@ -333,7 +387,9 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
       });
     }
 
-    if (rows.length === 0) return alert("Nenašli sa žiadne tréningové dátumy v tomto mesiaci.");
+    if (rows.length === 0) {
+      return alert("Nenašli sa žiadne tréningové dátumy v tomto mesiaci.");
+    }
 
     const supabase = createClient();
 
@@ -433,8 +489,12 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
     return `${d.getDate()}.${d.getMonth() + 1}.`;
   }
 
-  if (loading) {
-    return <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40">Načítavam...</div>;
+  if (permissionsLoading || loading) {
+    return (
+      <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40">
+        Načítavam...
+      </div>
+    );
   }
 
   if (!allowed) {
@@ -448,7 +508,11 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
   }
 
   if (!dojo) {
-    return <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40">Dojo sa nenašlo.</div>;
+    return (
+      <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40">
+        Dojo sa nenašlo.
+      </div>
+    );
   }
 
   return (
@@ -627,25 +691,14 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
                   </th>
 
                   {trainings.map((training) => (
-                    <th
-                      key={training.id}
-                      className="min-w-[150px] border-b p-3 text-center"
-                    >
-                      <div
-                        className={`rounded-2xl border p-3 space-y-2 ${topicColor(
-                          training.topic_id
-                        )}`}
-                      >
-                        <p className="text-lg font-black">
-                          {formatDate(training.training_date)}
-                        </p>
+                    <th key={training.id} className="min-w-[150px] border-b p-3 text-center">
+                      <div className={`rounded-2xl border p-3 space-y-2 ${topicColor(training.topic_id)}`}>
+                        <p className="text-lg font-black">{formatDate(training.training_date)}</p>
 
                         {canCreateTrainings ? (
                           <select
                             value={training.topic_id || ""}
-                            onChange={(e) =>
-                              updateTrainingTopic(training.id, e.target.value)
-                            }
+                            onChange={(e) => updateTrainingTopic(training.id, e.target.value)}
                             className="w-full rounded-lg border bg-white px-2 py-1 text-xs"
                           >
                             <option value="">Bez témy</option>
@@ -697,9 +750,7 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
 
                       {canWriteAttendance && (
                         <button
-                          onClick={() =>
-                            setHiddenStudents((prev) => [...prev, student.id])
-                          }
+                          onClick={() => setHiddenStudents((prev) => [...prev, student.id])}
                           className="mt-1 text-xs font-bold text-red-600"
                         >
                           Odobrať z prezenčky
@@ -714,9 +765,7 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
                         <td key={training.id} className="border-b p-3 text-center">
                           <button
                             disabled={!canWriteAttendance}
-                            onClick={() =>
-                              cycleAttendance(training.id, student.id)
-                            }
+                            onClick={() => cycleAttendance(training.id, student.id)}
                             className={`mx-auto flex h-12 w-12 items-center justify-center rounded-xl text-white disabled:opacity-50 ${
                               status === "present"
                                 ? "bg-green-600"
