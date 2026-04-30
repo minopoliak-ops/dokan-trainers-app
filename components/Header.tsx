@@ -24,7 +24,7 @@ type MenuItem = {
 export default function Header({ email }: { email?: string }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { permissions } = usePermissions();
+  const { permissions, loading } = usePermissions();
 
   async function logout() {
     const supabase = createClient();
@@ -41,16 +41,26 @@ export default function Header({ email }: { email?: string }) {
     { key: "more", label: "Viac", href: "/more", Icon: MoreHorizontal },
   ];
 
-  const visibleMenu = permissions?.visible_menu || [];
+  const visibleMenu: string[] = Array.isArray(permissions?.visible_menu)
+    ? permissions.visible_menu
+    : [];
 
-  const bottomMenu =
-    permissions?.can_manage_trainers
-      ? allMenu
-      : allMenu.filter((item) => {
-          if (item.key === "trainers") return false;
-          if (item.key === "more") return true;
-          return visibleMenu.includes(item.key);
-        });
+  const isAdmin = !!permissions?.can_manage_trainers;
+
+  const bottomMenu: MenuItem[] = loading
+    ? [{ key: "more", label: "Viac", href: "/more", Icon: MoreHorizontal }]
+    : isAdmin
+    ? allMenu
+    : allMenu.filter((item) => {
+        if (item.key === "trainers") return false;
+        if (item.key === "more") return true;
+        return visibleMenu.includes(item.key);
+      });
+
+  const safeMenu =
+    bottomMenu.length > 0
+      ? bottomMenu
+      : [{ key: "more", label: "Viac", href: "/more", Icon: MoreHorizontal }];
 
   return (
     <>
@@ -92,9 +102,11 @@ export default function Header({ email }: { email?: string }) {
       <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-black/10 bg-white/95 px-3 pb-safe pt-2 backdrop-blur">
         <div
           className="mx-auto grid max-w-md gap-1"
-          style={{ gridTemplateColumns: `repeat(${bottomMenu.length}, minmax(0, 1fr))` }}
+          style={{
+            gridTemplateColumns: `repeat(${safeMenu.length}, minmax(0, 1fr))`,
+          }}
         >
-          {bottomMenu.map(({ label, href, Icon }) => {
+          {safeMenu.map(({ key, label, href, Icon }) => {
             const active =
               pathname === href ||
               (href === "/dashboard" && pathname === "/") ||
@@ -102,7 +114,7 @@ export default function Header({ email }: { email?: string }) {
 
             return (
               <Link
-                key={href}
+                key={key}
                 href={href}
                 className={`flex flex-col items-center justify-center rounded-2xl px-2 py-2 text-[11px] font-semibold transition active:scale-[0.96] ${
                   active ? "bg-[#111] text-white" : "text-black/55"

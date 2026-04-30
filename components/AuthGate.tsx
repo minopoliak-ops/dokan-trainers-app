@@ -8,24 +8,40 @@ import { useEffect, useState } from "react";
 export default function AuthGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [checking, setChecking] = useState(true);
-  const [email, setEmail] = useState<string | undefined>();
+  const [email, setEmail] = useState<string>("");
 
   useEffect(() => {
-    const supabase = createClient();
+    let mounted = true;
 
-    supabase.auth.getUser().then(({ data }) => {
+    async function checkUser() {
+      const supabase = createClient();
+      const { data } = await supabase.auth.getUser();
+
+      if (!mounted) return;
+
       if (!data.user) {
         router.replace("/login");
+        setChecking(false);
         return;
       }
 
-      setEmail(data.user.email || undefined);
+      setEmail(data.user.email || "");
       setChecking(false);
-    });
+    }
+
+    checkUser();
+
+    return () => {
+      mounted = false;
+    };
   }, [router]);
 
   if (checking) {
-    return <main className="flex min-h-screen items-center justify-center">Kontrolujem prihlásenie...</main>;
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#f7f2e8]">
+        Kontrolujem prihlásenie...
+      </main>
+    );
   }
 
   return (
