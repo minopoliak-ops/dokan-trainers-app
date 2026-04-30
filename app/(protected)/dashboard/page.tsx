@@ -6,6 +6,8 @@ import { Building2 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+export const dynamic = "force-dynamic";
+
 export default function DashboardPage() {
   const { dojoIds, loading: permissionsLoading } = usePermissions();
   const [dojos, setDojos] = useState<any[]>([]);
