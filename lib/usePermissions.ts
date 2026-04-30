@@ -11,12 +11,19 @@ export function usePermissions() {
 
   useEffect(() => {
     async function load() {
+      setLoading(true);
+
       const supabase = createClient();
 
       const { data: userData, error: userError } = await supabase.auth.getUser();
-      const userEmail = userData.user?.email || "";
 
-      console.log("USER:", userEmail, userData.user?.id, userError);
+      const userEmail = String(userData.user?.email || "")
+        .trim()
+        .toLowerCase();
+
+      const userId = userData.user?.id || "";
+
+      console.log("USER:", userEmail, userId, userError);
 
       setEmail(userEmail);
 
@@ -30,7 +37,7 @@ export function usePermissions() {
       const { data: trainer, error: trainerError } = await supabase
         .from("trainers")
         .select("*")
-        .eq("email", userEmail)
+        .ilike("email", userEmail)
         .maybeSingle();
 
       console.log("TRAINER:", trainer, trainerError);
