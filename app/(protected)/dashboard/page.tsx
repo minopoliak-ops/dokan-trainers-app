@@ -13,16 +13,17 @@ export default function DashboardPage() {
   const [dojos, setDojos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // 🔥 KRITICKÉ
-  if (!mounted || permissionsLoading) return null;
-
   useEffect(() => {
     async function loadDojos() {
+      if (!mounted || permissionsLoading) return;
+
       if (!dojoIds || dojoIds.length === 0) {
         setDojos([]);
         setLoading(false);
         return;
       }
+
+      setLoading(true);
 
       const supabase = createClient();
 
@@ -43,7 +44,11 @@ export default function DashboardPage() {
     }
 
     loadDojos();
-  }, [dojoIds]);
+  }, [mounted, permissionsLoading, dojoIds]);
+
+  if (!mounted || permissionsLoading) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen space-y-6 bg-[#f7f2e8] px-5 py-6 pb-40">
@@ -60,7 +65,10 @@ export default function DashboardPage() {
       {loading && (
         <div className="grid gap-5">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-32 animate-pulse rounded-3xl bg-white/60" />
+            <div
+              key={i}
+              className="h-32 animate-pulse rounded-3xl bg-white/60"
+            />
           ))}
         </div>
       )}
@@ -71,7 +79,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {!loading && (
+      {!loading && dojos.length > 0 && (
         <div className="grid gap-5">
           {dojos.map((dojo) => (
             <Link
@@ -84,7 +92,9 @@ export default function DashboardPage() {
               </div>
 
               <h2 className="text-xl font-bold text-[#111]">{dojo.name}</h2>
-              <p className="mt-1 text-sm text-black/60">{dojo.address}</p>
+              <p className="mt-1 text-sm text-black/60">
+                {dojo.address || "Bez adresy"}
+              </p>
             </Link>
           ))}
         </div>
