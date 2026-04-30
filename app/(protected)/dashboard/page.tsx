@@ -4,20 +4,28 @@ import { createClient } from "@/lib/supabase/browser";
 import { usePermissions } from "@/lib/usePermissions";
 import { Building2 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export const dynamic = "force-dynamic";
 
 export default function DashboardPage() {
   const { dojoIds, loading: permissionsLoading } = usePermissions();
+
   const [dojos, setDojos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const dojoKey = useMemo(() => dojoIds.join(","), [dojoIds]);
+
   useEffect(() => {
     async function loadDojos() {
+      console.log("DASHBOARD PERMISSIONS LOADING:", permissionsLoading);
+      console.log("DASHBOARD DOJO IDS:", dojoIds);
+
       if (permissionsLoading) return;
 
-      if (!dojoIds || dojoIds.length === 0) {
+      setLoading(true);
+
+      if (dojoIds.length === 0) {
         setDojos([]);
         setLoading(false);
         return;
@@ -27,22 +35,25 @@ export default function DashboardPage() {
 
       const { data, error } = await supabase
         .from("dojos")
-        .select("*")
+        .select("id, name, address")
         .in("id", dojoIds)
         .order("name");
 
+      console.log("DASHBOARD DOJOS DATA:", data);
+      console.log("DASHBOARD DOJOS ERROR:", error);
+
       if (error) {
-        console.error("Dashboard dojos error:", error);
         setDojos([]);
-      } else {
-        setDojos(data || []);
+        setLoading(false);
+        return;
       }
 
+      setDojos(data || []);
       setLoading(false);
     }
 
     loadDojos();
-  }, [dojoIds, permissionsLoading]);
+  }, [permissionsLoading, dojoKey]);
 
   return (
     <div className="min-h-screen space-y-6 bg-[#f7f2e8] px-5 py-6 pb-40">
@@ -59,7 +70,10 @@ export default function DashboardPage() {
       {(permissionsLoading || loading) && (
         <div className="grid gap-5">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-32 animate-pulse rounded-3xl bg-white/60" />
+            <div
+              key={i}
+              className="h-32 animate-pulse rounded-3xl bg-white/60"
+            />
           ))}
         </div>
       )}
@@ -70,7 +84,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {!permissionsLoading && !loading && (
+      {!permissionsLoading && !loading && dojos.length > 0 && (
         <div className="grid gap-5">
           {dojos.map((dojo) => (
             <Link
@@ -83,7 +97,9 @@ export default function DashboardPage() {
               </div>
 
               <h2 className="text-xl font-bold text-[#111]">{dojo.name}</h2>
-              <p className="mt-1 text-sm text-black/60">{dojo.address}</p>
+              <p className="mt-1 text-sm text-black/60">
+                {dojo.address || "Bez adresy"}
+              </p>
             </Link>
           ))}
         </div>
