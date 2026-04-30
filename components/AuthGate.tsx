@@ -5,45 +5,41 @@ import { createClient } from "@/lib/supabase/browser";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-export const dynamic = "force-dynamic";
-
 export default function AuthGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
   const [checking, setChecking] = useState(true);
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState<string | undefined>();
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    let mounted = true;
+    setMounted(true);
 
-    async function checkUser() {
-      const supabase = createClient();
+    const supabase = createClient();
 
-      const { data, error } = await supabase.auth.getUser();
+    async function check() {
+      const { data } = await supabase.auth.getUser();
 
-      console.log("AUTH CHECK:", data, error);
-
-      if (!mounted) return;
-
-      if (!data?.user) {
+      if (!data.user) {
         router.replace("/login");
-        setChecking(false);
         return;
       }
 
-      setEmail(data.user.email || "");
+      setEmail(data.user.email || undefined);
       setChecking(false);
     }
 
-    checkUser();
-
-    return () => {
-      mounted = false;
-    };
+    check();
   }, [router]);
 
-  // ❗ KRITICKÉ: nič nerenderuj počas loadingu (fix React #419)
-  if (checking) return null;
+  // 🔥 KRITICKÉ — nič nerenderuj pred mount
+  if (!mounted || checking) {
+    return (
+      <main className="flex min-h-screen items-center justify-center">
+        Kontrolujem prihlásenie...
+      </main>
+    );
+  }
 
   return (
     <>
