@@ -8,22 +8,16 @@ export function usePermissions() {
   const [email, setEmail] = useState("");
   const [dojoIds, setDojoIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    async function load() {
-      setLoading(true);
+    setMounted(true);
 
+    async function load() {
       const supabase = createClient();
 
-      const { data: userData, error: userError } = await supabase.auth.getUser();
-
-      const userEmail = String(userData.user?.email || "")
-        .trim()
-        .toLowerCase();
-
-      const userId = userData.user?.id || "";
-
-      console.log("USER:", userEmail, userId, userError);
+      const { data: userData } = await supabase.auth.getUser();
+      const userEmail = userData.user?.email || "";
 
       setEmail(userEmail);
 
@@ -34,15 +28,13 @@ export function usePermissions() {
         return;
       }
 
-      const { data: trainer, error: trainerError } = await supabase
+      const { data: trainer } = await supabase
         .from("trainers")
         .select("*")
-        .ilike("email", userEmail)
+        .eq("email", userEmail)
         .maybeSingle();
 
-      console.log("TRAINER:", trainer, trainerError);
-
-      if (!trainer || trainerError) {
+      if (!trainer) {
         setPermissions(null);
         setDojoIds([]);
         setLoading(false);
@@ -51,12 +43,10 @@ export function usePermissions() {
 
       setPermissions(trainer);
 
-      const { data: links, error: linksError } = await supabase
+      const { data: links } = await supabase
         .from("trainer_dojos")
         .select("dojo_id")
         .eq("trainer_id", trainer.id);
-
-      console.log("TRAINER DOJOS:", links, linksError);
 
       setDojoIds((links || []).map((x: any) => x.dojo_id));
       setLoading(false);
@@ -70,5 +60,6 @@ export function usePermissions() {
     email,
     dojoIds,
     loading,
+    mounted,
   };
 }
