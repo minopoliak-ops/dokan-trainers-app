@@ -44,6 +44,26 @@ export function usePermissions() {
 
       setPermissions(trainer);
 
+      const isAdmin = !!trainer.can_manage_trainers;
+
+      if (isAdmin) {
+        const { data: allDojos, error: allDojosError } = await supabase
+          .from("dojos")
+          .select("id")
+          .order("name");
+
+        if (allDojosError) {
+          console.error("Admin dojos error:", allDojosError);
+          setDojoIds([]);
+          setLoading(false);
+          return;
+        }
+
+        setDojoIds((allDojos || []).map((d: any) => d.id));
+        setLoading(false);
+        return;
+      }
+
       const { data: dojoLinks, error: dojoLinksError } = await supabase
         .from("trainer_dojos")
         .select("dojo_id")
