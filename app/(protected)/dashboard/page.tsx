@@ -2,61 +2,45 @@
 
 import { createClient } from "@/lib/supabase/browser";
 import { usePermissions } from "@/lib/usePermissions";
-import { Building2, CalendarCheck, Users, UserRound } from "lucide-react";
+import { Building2 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
 export default function DashboardPage() {
-  const { permissions, loading: permissionsLoading } = usePermissions();
+  const { dojoIds, loading: permissionsLoading } = usePermissions();
   const [dojos, setDojos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-
-  const isAdmin = !!permissions?.can_manage_trainers;
 
   useEffect(() => {
     async function loadDojos() {
       if (permissionsLoading) return;
 
-      if (!permissions?.id) {
+      if (!dojoIds || dojoIds.length === 0) {
         setDojos([]);
         setLoading(false);
         return;
       }
 
-      setLoading(true);
-
       const supabase = createClient();
 
-      if (isAdmin) {
-        const { data, error } = await supabase
-          .from("dojos")
-          .select("*, trainer_dojos(trainers(full_name))")
-          .order("name");
+      const { data, error } = await supabase
+        .from("dojos")
+        .select("*")
+        .in("id", dojoIds)
+        .order("name");
 
-        if (error) console.error("Admin dojos error:", error);
-
+      if (error) {
+        console.error("Dashboard dojos error:", error);
+        setDojos([]);
+      } else {
         setDojos(data || []);
-        setLoading(false);
-        return;
       }
 
-      const { data, error } = await supabase
-        .from("trainer_dojos")
-        .select("dojos(id, name, address, trainer_dojos(trainers(full_name)))")
-        .eq("trainer_id", permissions.id);
-
-      if (error) console.error("Trainer dojos error:", error);
-
-      const mapped = (data || [])
-        .map((item: any) => item.dojos)
-        .filter(Boolean);
-
-      setDojos(mapped);
       setLoading(false);
     }
 
     loadDojos();
-  }, [permissionsLoading, permissions?.id, isAdmin]);
+  }, [dojoIds, permissionsLoading]);
 
   return (
     <div className="min-h-screen space-y-6 bg-[#f7f2e8] px-5 py-6 pb-40">
@@ -73,10 +57,7 @@ export default function DashboardPage() {
       {(permissionsLoading || loading) && (
         <div className="grid gap-5">
           {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="h-32 animate-pulse rounded-3xl bg-white/60"
-            />
+            <div key={i} className="h-32 animate-pulse rounded-3xl bg-white/60" />
           ))}
         </div>
       )}
@@ -89,62 +70,22 @@ export default function DashboardPage() {
 
       {!permissionsLoading && !loading && (
         <div className="grid gap-5">
-          {dojos.map((dojo, i) => {
-            const trainerNames =
-              dojo.trainer_dojos
-                ?.map((link: any) => link.trainers?.full_name)
-                .filter(Boolean)
-                .join(", ") || "Bez priradeného trénera";
+          {dojos.map((dojo) => (
+            <Link
+              key={dojo.id}
+              href={`/dojos/${dojo.id}`}
+              className="rounded-[26px] bg-white p-6 shadow-[0_8px_20px_rgba(0,0,0,0.08)] ring-1 ring-black/5 active:scale-[0.98]"
+            >
+              <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#d71920] text-white shadow-md">
+                <Building2 size={26} />
+              </div>
 
-            return (
-              <Link
-                key={dojo.id}
-                href={`/dojos/${dojo.id}`}
-                className="group rounded-[26px] bg-white p-6 shadow-[0_8px_20px_rgba(0,0,0,0.08)] ring-1 ring-black/5 transition-all duration-300 active:scale-[0.98] hover:-translate-y-1 hover:shadow-[0_12px_28px_rgba(0,0,0,0.12)]"
-                style={{
-                  animation: "fadeUp 0.4s ease forwards",
-                  animationDelay: `${i * 0.05}s`,
-                  opacity: 0,
-                }}
-              >
-                <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#d71920] text-white shadow-md">
-                  <Building2 size={26} />
-                </div>
-
-                <h2 className="text-xl font-bold text-[#111]">{dojo.name}</h2>
-                <p className="mt-1 text-sm text-black/60">{dojo.address}</p>
-
-                <p className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-[#f7f2e8] px-3 py-2 text-sm font-semibold text-black/60">
-                  <UserRound size={16} />
-                  {trainerNames}
-                </p>
-
-                <div className="mt-5 flex gap-4 text-sm font-semibold text-black/70">
-                  <span className="inline-flex items-center gap-1">
-                    <Users size={16} /> Žiaci
-                  </span>
-                  <span className="inline-flex items-center gap-1">
-                    <CalendarCheck size={16} /> Prezenčka
-                  </span>
-                </div>
-              </Link>
-            );
-          })}
+              <h2 className="text-xl font-bold text-[#111]">{dojo.name}</h2>
+              <p className="mt-1 text-sm text-black/60">{dojo.address}</p>
+            </Link>
+          ))}
         </div>
       )}
-
-      <style jsx>{`
-        @keyframes fadeUp {
-          from {
-            opacity: 0;
-            transform: translateY(12px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-      `}</style>
     </div>
   );
 }
