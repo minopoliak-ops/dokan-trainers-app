@@ -11,30 +11,39 @@ export function usePermissions() {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setMounted(true);
+    let alive = true;
 
     async function load() {
+      setMounted(true);
+      setLoading(true);
+
       const supabase = createClient();
 
-      const { data: userData } = await supabase.auth.getUser();
-      const userEmail = userData.user?.email || "";
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      const user = userData.user;
 
-      setEmail(userEmail);
+      if (!alive) return;
 
-      if (!userEmail) {
+      if (userError || !user) {
         setPermissions(null);
+        setEmail("");
         setDojoIds([]);
         setLoading(false);
         return;
       }
 
-      const { data: trainer } = await supabase
+      const userEmail = String(user.email || "").trim().toLowerCase();
+      setEmail(userEmail);
+
+      const { data: trainer, error: trainerError } = await supabase
         .from("trainers")
         .select("*")
-        .eq("email", userEmail)
+        .eq("user_id", user.id)
         .maybeSingle();
 
-      if (!trainer) {
+      if (!alive) return;
+
+      if (trainerError || !trainer) {
         setPermissions(null);
         setDojoIds([]);
         setLoading(false);
@@ -43,16 +52,27 @@ export function usePermissions() {
 
       setPermissions(trainer);
 
-      const { data: links } = await supabase
+      const { data: links, error: linksError } = await supabase
         .from("trainer_dojos")
         .select("dojo_id")
         .eq("trainer_id", trainer.id);
 
-      setDojoIds((links || []).map((x: any) => x.dojo_id));
+      if (!alive) return;
+
+      if (linksError) {
+        setDojoIds([]);
+      } else {
+        setDojoIds((links || []).map((x: any) => x.dojo_id));
+      }
+
       setLoading(false);
     }
 
     load();
+
+    return () => {
+      alive = false;
+    };
   }, []);
 
   return {
