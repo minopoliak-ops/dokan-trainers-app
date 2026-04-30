@@ -5,21 +5,27 @@ import { createClient } from "@/lib/supabase/browser";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+export const dynamic = "force-dynamic";
+
 export default function AuthGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+
   const [checking, setChecking] = useState(true);
-  const [email, setEmail] = useState<string>("");
+  const [email, setEmail] = useState("");
 
   useEffect(() => {
     let mounted = true;
 
     async function checkUser() {
       const supabase = createClient();
-      const { data } = await supabase.auth.getUser();
+
+      const { data, error } = await supabase.auth.getUser();
+
+      console.log("AUTH CHECK:", data, error);
 
       if (!mounted) return;
 
-      if (!data.user) {
+      if (!data?.user) {
         router.replace("/login");
         setChecking(false);
         return;
@@ -36,18 +42,15 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     };
   }, [router]);
 
-  if (checking) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-[#f7f2e8]">
-        Kontrolujem prihlásenie...
-      </main>
-    );
-  }
+  // ❗ KRITICKÉ: nič nerenderuj počas loadingu (fix React #419)
+  if (checking) return null;
 
   return (
     <>
       <Header email={email} />
-      <main className="mx-auto max-w-7xl px-4 py-6">{children}</main>
+      <main className="mx-auto max-w-7xl px-4 py-6">
+        {children}
+      </main>
     </>
   );
 }
