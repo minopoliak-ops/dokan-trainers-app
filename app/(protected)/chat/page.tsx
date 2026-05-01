@@ -28,6 +28,31 @@ export default function ChatPage() {
     if (!error) setTrainers(data || []);
   }
 
+  async function markMessagesAsRead(items: any[]) {
+    if (!permissions?.id || items.length === 0) return;
+
+    const supabase = createClient();
+    const me = permissions.id;
+
+    const unread = items.filter((m: any) => {
+      if (m.trainer_id === me) return false;
+
+      const readBy: string[] = Array.isArray(m.read_by) ? m.read_by : [];
+      return !readBy.includes(me);
+    });
+
+    for (const m of unread) {
+      const readBy: string[] = Array.isArray(m.read_by) ? m.read_by : [];
+
+      await supabase
+        .from("trainer_chat_messages")
+        .update({
+          read_by: [...readBy, me],
+        })
+        .eq("id", m.id);
+    }
+  }
+
   async function loadMessages() {
     if (!permissions?.id) return;
 
@@ -70,6 +95,7 @@ export default function ChatPage() {
 
     setMessages(visibleMessages);
     setLoading(false);
+    markMessagesAsRead(visibleMessages);
   }
 
   useEffect(() => {
@@ -113,6 +139,7 @@ export default function ChatPage() {
       message: message.trim(),
       room: isAllChat ? "all" : "direct",
       recipient_trainer_id: isAllChat ? null : selectedTrainerId,
+      read_by: [permissions.id],
     });
 
     if (error) return alert(error.message);
