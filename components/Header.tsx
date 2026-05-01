@@ -72,19 +72,15 @@ export default function Header({ email }: { email?: string }) {
 
   const menu =
     !mounted || loading
-      ? [{ key: "more", label: "Viac", href: "/more", Icon: MoreHorizontal }]
+      ? []
       : isAdmin
       ? allMenu
       : allMenu.filter((item) => {
           if (item.adminOnly) return false;
-          if (item.key === "more") return true;
           return visibleMenu.includes(item.key);
         });
 
-  const safeMenu =
-    menu.length > 0
-      ? menu
-      : [{ key: "more", label: "Viac", href: "/more", Icon: MoreHorizontal }];
+  const safeMenu = menu;
 
   const chatIsVisibleInBottom = useMemo(() => {
     return safeMenu.some((item) => item.key === "chat");
@@ -133,11 +129,11 @@ export default function Header({ email }: { email?: string }) {
       return;
     }
 
-    if (newest.room === "direct") {
-      setLatestChatHref(`/chat?trainer=${newest.trainer_id}`);
-    } else {
-      setLatestChatHref("/chat?trainer=all");
-    }
+    setLatestChatHref(
+      newest.room === "direct"
+        ? `/chat?trainer=${newest.trainer_id}`
+        : "/chat?trainer=all"
+    );
   }
 
   useEffect(() => {
@@ -226,49 +222,51 @@ export default function Header({ email }: { email?: string }) {
         </div>
       </header>
 
-      <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-black/10 bg-white/95 px-3 pb-safe pt-2 backdrop-blur">
-        <div className="mx-auto max-w-7xl overflow-x-auto">
-          <div
-            className="grid min-w-max gap-1"
-            style={{
-              gridTemplateColumns: `repeat(${safeMenu.length}, minmax(92px, 1fr))`,
-            }}
-          >
-            {safeMenu.map(({ key, label, href, Icon }) => {
-              const active =
-                pathname === href ||
-                (href === "/dashboard" && pathname === "/") ||
-                (href !== "/dashboard" && pathname.startsWith(href));
+      {safeMenu.length > 0 && (
+        <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-black/10 bg-white/95 px-3 pb-safe pt-2 backdrop-blur">
+          <div className="mx-auto max-w-7xl overflow-x-auto">
+            <div
+              className="grid min-w-max gap-1"
+              style={{
+                gridTemplateColumns: `repeat(${safeMenu.length}, minmax(92px, 1fr))`,
+              }}
+            >
+              {safeMenu.map(({ key, label, href, Icon }) => {
+                const active =
+                  pathname === href ||
+                  (href === "/dashboard" && pathname === "/") ||
+                  (href !== "/dashboard" && pathname.startsWith(href));
 
-              const showChatBadge =
-                unreadChatCount > 0 &&
-                notificationsEnabled &&
-                (key === "chat" || (key === "more" && !chatIsVisibleInBottom));
+                const showChatBadge =
+                  unreadChatCount > 0 &&
+                  notificationsEnabled &&
+                  (key === "chat" || (key === "more" && !chatIsVisibleInBottom));
 
-              const finalHref = key === "chat" ? latestChatHref : href;
+                const finalHref = key === "chat" ? latestChatHref : href;
 
-              return (
-                <Link
-                  key={key}
-                  href={finalHref}
-                  className={`relative flex flex-col items-center justify-center rounded-2xl px-2 py-2 text-[11px] font-semibold transition active:scale-[0.96] ${
-                    active ? "bg-[#111] text-white" : "text-black/55"
-                  }`}
-                >
-                  {showChatBadge && (
-                    <span className="absolute right-4 top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#d71920] px-1 text-[10px] font-black text-white shadow-md ring-2 ring-white">
-                      {unreadChatCount > 9 ? "9+" : unreadChatCount}
-                    </span>
-                  )}
+                return (
+                  <Link
+                    key={key}
+                    href={finalHref}
+                    className={`relative flex flex-col items-center justify-center rounded-2xl px-2 py-2 text-[11px] font-semibold transition active:scale-[0.96] ${
+                      active ? "bg-[#111] text-white" : "text-black/55"
+                    }`}
+                  >
+                    {showChatBadge && (
+                      <span className="absolute right-4 top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#d71920] px-1 text-[10px] font-black text-white shadow-md ring-2 ring-white">
+                        {unreadChatCount > 9 ? "9+" : unreadChatCount}
+                      </span>
+                    )}
 
-                  <Icon size={20} />
-                  <span className="mt-1 whitespace-nowrap">{label}</span>
-                </Link>
-              );
-            })}
+                    <Icon size={20} />
+                    <span className="mt-1 whitespace-nowrap">{label}</span>
+                  </Link>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      </nav>
+        </nav>
+      )}
     </>
   );
 }
