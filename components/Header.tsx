@@ -9,7 +9,9 @@ import {
   Home,
   LogOut,
   Mail,
+  MessageCircle,
   MoreHorizontal,
+  NotebookPen,
   Tags,
   Trophy,
   Users,
@@ -17,6 +19,7 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
 type MenuItem = {
@@ -32,7 +35,10 @@ export default function Header({ email }: { email?: string }) {
   const pathname = usePathname();
   const { permissions, loading, mounted } = usePermissions();
 
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
+
   const isAdmin = !!permissions?.can_manage_trainers;
+  const notificationsEnabled = permissions?.chat_notifications_enabled !== false;
 
   async function logout() {
     const supabase = createClient();
@@ -51,6 +57,8 @@ export default function Header({ email }: { email?: string }) {
     { key: "events", label: "Semináre", href: "/events", Icon: Trophy },
     { key: "stats", label: "Štatistiky", href: "/stats", Icon: BarChart3 },
     { key: "emails", label: "Emaily", href: "/emails", Icon: Mail },
+    { key: "chat", label: "Chat", href: "/chat", Icon: MessageCircle },
+    { key: "notes", label: "Poznámky", href: "/notes", Icon: NotebookPen },
     { key: "more", label: "Viac", href: "/more", Icon: MoreHorizontal },
   ];
 
@@ -73,6 +81,72 @@ export default function Header({ email }: { email?: string }) {
     menu.length > 0
       ? menu
       : [{ key: "more", label: "Viac", href: "/more", Icon: MoreHorizontal }];
+
+  const chatIsVisibleInBottom = useMemo(() => {
+    return safeMenu.some((item) => item.key === "chat");
+  }, [safeMenu]);
+
+  async function loadUnreadChatCount() {
+    if (!permissions?.id || !notificationsEnabled) {
+      setUnreadChatCount(0);
+      return;
+    }
+
+    const supabase = createClient();
+
+    const { data, error } = await supabase
+      .from("trainer_chat_messages")
+      .select("id, trainer_id, recipient_trainer_id, room, read_by")
+      .order("created_at", { ascending: false })
+      .limit(200);
+
+    if (error) {
+      console.error(error.message);
+      return;
+    }
+
+    const count = (data || []).filter((m: any) => {
+      const me = permissions.id;
+
+      if (m.trainer_id === me) return false;
+
+      const readBy: string[] = Array.isArray(m.read_by) ? m.read_by : [];
+      if (readBy.includes(me)) return false;
+
+      if (m.room === "all") return true;
+
+      if (m.room === "direct" && m.recipient_trainer_id === me) return true;
+
+      return false;
+    }).length;
+
+    setUnreadChatCount(count);
+  }
+
+  useEffect(() => {
+    loadUnreadChatCount();
+
+    if (!permissions?.id) return;
+
+    const supabase = createClient();
+
+    const channel = supabase
+      .channel("trainer-chat-header")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "trainer_chat_messages",
+        },
+        () => loadUnreadChatCount()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [permissions?.id, notificationsEnabled]);
 
   return (
     <>
@@ -123,14 +197,25 @@ export default function Header({ email }: { email?: string }) {
                 (href === "/dashboard" && pathname === "/") ||
                 (href !== "/dashboard" && pathname.startsWith(href));
 
+              const showChatBadge =
+                unreadChatCount > 0 &&
+                notificationsEnabled &&
+                (key === "chat" || (key === "more" && !chatIsVisibleInBottom));
+
               return (
                 <Link
                   key={key}
                   href={href}
-                  className={`flex flex-col items-center justify-center rounded-2xl px-2 py-2 text-[11px] font-semibold transition active:scale-[0.96] ${
+                  className={`relative flex flex-col items-center justify-center rounded-2xl px-2 py-2 text-[11px] font-semibold transition active:scale-[0.96] ${
                     active ? "bg-[#111] text-white" : "text-black/55"
                   }`}
                 >
+                  {showChatBadge && (
+                    <span className="absolute right-4 top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#d71920] px-1 text-[10px] font-black text-white shadow-md ring-2 ring-white">
+                      {unreadChatCount > 9 ? "9+" : unreadChatCount}
+                    </span>
+                  )}
+
                   <Icon size={20} />
                   <span className="mt-1 whitespace-nowrap">{label}</span>
                 </Link>
