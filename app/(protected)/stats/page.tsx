@@ -33,6 +33,10 @@ function monthLabel(key: string) {
   return `${month}.${year}`;
 }
 
+function statusLabel(status: string) {
+  return status === "present" ? "Prítomný" : "Neprítomný";
+}
+
 function AttendanceGraph({
   oldMonth,
   newMonth,
@@ -105,11 +109,15 @@ export default function StatsPage() {
   const [selectedDojoId, setSelectedDojoId] = useState("");
   const [selectedStudentId, setSelectedStudentId] = useState("");
 
+  const [showTrainingHistory, setShowTrainingHistory] = useState(false);
+  const [showEventHistory, setShowEventHistory] = useState(false);
+  const [trainingSearch, setTrainingSearch] = useState("");
+  const [eventSearch, setEventSearch] = useState("");
+
   async function loadData() {
     if (!permissions) return;
 
     const supabase = createClient();
-
     let allowedDojoIds: string[] = [];
 
     if (!isAdmin) {
@@ -175,9 +183,7 @@ export default function StatsPage() {
     if (dojosResult.error) alert(dojosResult.error.message);
     if (studentsResult.error) alert(studentsResult.error.message);
     if (trainingsResult.error) alert(trainingsResult.error.message);
-    if (eventsResult.error) console.error(eventsResult.error.message);
     if (attendanceResult.error) alert(attendanceResult.error.message);
-    if (eventAttendanceResult.error) console.error(eventAttendanceResult.error.message);
 
     setDojos(dojosResult.data || []);
     setStudents(studentsResult.data || []);
@@ -200,7 +206,6 @@ export default function StatsPage() {
     return dojos.map((dojo) => {
       const dojoTrainings = trainings.filter((t) => t.dojo_id === dojo.id);
       const dojoTrainingIds = dojoTrainings.map((t) => t.id);
-
       const dojoAttendance = attendance.filter((a) =>
         dojoTrainingIds.includes(a.training_id)
       );
@@ -239,7 +244,6 @@ export default function StatsPage() {
       .map((a) => ({
         ...a,
         training: trainings.find((t) => t.id === a.training_id),
-        type: "training",
       }))
       .filter((a) => a.training)
       .sort((a, b) =>
@@ -263,6 +267,50 @@ export default function StatsPage() {
         String(b.event?.start_date).localeCompare(String(a.event?.start_date))
       );
   }, [eventAttendance, events, selectedStudentId]);
+
+  const filteredTrainingHistory = useMemo(() => {
+    const q = trainingSearch.toLowerCase().trim();
+    if (!q) return studentTrainingAttendance;
+
+    return studentTrainingAttendance.filter((item) => {
+      const text = [
+        item.training?.training_date,
+        item.training?.title,
+        item.training?.dojos?.name,
+        item.training?.training_topics?.name,
+        statusLabel(item.status),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return text.includes(q);
+    });
+  }, [studentTrainingAttendance, trainingSearch]);
+
+  const filteredEventHistory = useMemo(() => {
+    const q = eventSearch.toLowerCase().trim();
+    if (!q) return studentEventAttendance;
+
+    return studentEventAttendance.filter((item) => {
+      const typeLabel =
+        eventTypeLabels[item.event?.event_type] || item.event?.event_type || "";
+
+      const text = [
+        item.event?.start_date,
+        item.event?.name,
+        typeLabel,
+        item.event?.dojos?.name,
+        item.event?.training_topics?.name,
+        statusLabel(item.status),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return text.includes(q);
+    });
+  }, [studentEventAttendance, eventSearch]);
 
   const presentCount = studentTrainingAttendance.filter(
     (a) => a.status === "present"
@@ -377,7 +425,13 @@ export default function StatsPage() {
 
           <select
             value={selectedStudentId}
-            onChange={(e) => setSelectedStudentId(e.target.value)}
+            onChange={(e) => {
+              setSelectedStudentId(e.target.value);
+              setShowTrainingHistory(false);
+              setShowEventHistory(false);
+              setTrainingSearch("");
+              setEventSearch("");
+            }}
             className="rounded-xl border px-4 py-3"
           >
             <option value="">Vyber cvičiaceho</option>
@@ -516,79 +570,133 @@ export default function StatsPage() {
           </div>
 
           <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
-            <h2 className="mb-4 text-2xl font-bold">História tréningov</h2>
+            <button
+              type="button"
+              onClick={() => setShowTrainingHistory((v) => !v)}
+              className="flex w-full items-center justify-between text-left"
+            >
+              <div>
+                <h2 className="text-2xl font-bold">História tréningov</h2>
+                <p className="text-sm text-black/50">
+                  {studentTrainingAttendance.length} záznamov
+                </p>
+              </div>
 
-            <div className="grid gap-3">
-              {studentTrainingAttendance.length === 0 ? (
-                <p>Žiadna história tréningov.</p>
-              ) : (
-                studentTrainingAttendance.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-center justify-between rounded-2xl border border-black/10 p-4"
-                  >
-                    <div>
-                      <p className="font-bold">
-                        {item.training?.training_date} — {item.training?.title}
-                      </p>
-                      <p className="text-black/60">
-                        {item.training?.dojos?.name} ·{" "}
-                        {item.training?.training_topics?.name || "Bez témy"}
-                      </p>
-                    </div>
+              <span className="rounded-xl bg-black px-4 py-2 text-sm font-bold text-white">
+                {showTrainingHistory ? "Skryť" : "Rozbaliť"}
+              </span>
+            </button>
 
-                    <span
-                      className={`rounded-xl px-4 py-2 font-bold ${
-                        item.status === "present"
-                          ? "bg-green-100 text-green-800"
-                          : "bg-red-100 text-red-800"
-                      }`}
-                    >
-                      {item.status === "present" ? "Prítomný" : "Neprítomný"}
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
+            {showTrainingHistory && (
+              <div className="mt-5 space-y-4">
+                <input
+                  value={trainingSearch}
+                  onChange={(e) => setTrainingSearch(e.target.value)}
+                  placeholder="Vyhľadať podľa dátumu, názvu, témy, dojo..."
+                  className="w-full rounded-xl border px-4 py-3"
+                />
+
+                <div className="grid gap-3">
+                  {filteredTrainingHistory.length === 0 ? (
+                    <p>Žiadna história tréningov pre tento filter.</p>
+                  ) : (
+                    filteredTrainingHistory.map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex items-center justify-between gap-4 rounded-2xl border border-black/10 p-4"
+                      >
+                        <div>
+                          <p className="font-bold">
+                            {item.training?.training_date} — {item.training?.title}
+                          </p>
+                          <p className="text-black/60">
+                            {item.training?.dojos?.name} ·{" "}
+                            {item.training?.training_topics?.name || "Bez témy"}
+                          </p>
+                        </div>
+
+                        <span
+                          className={`shrink-0 rounded-xl px-4 py-2 font-bold ${
+                            item.status === "present"
+                              ? "bg-green-100 text-green-800"
+                              : "bg-red-100 text-red-800"
+                          }`}
+                        >
+                          {statusLabel(item.status)}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
-            <h2 className="mb-4 text-2xl font-bold">História seminárov a táborov</h2>
+            <button
+              type="button"
+              onClick={() => setShowEventHistory((v) => !v)}
+              className="flex w-full items-center justify-between text-left"
+            >
+              <div>
+                <h2 className="text-2xl font-bold">
+                  História seminárov a táborov
+                </h2>
+                <p className="text-sm text-black/50">
+                  {studentEventAttendance.length} záznamov
+                </p>
+              </div>
 
-            <div className="grid gap-3">
-              {studentEventAttendance.length === 0 ? (
-                <p>Žiadna história seminárov alebo táborov.</p>
-              ) : (
-                studentEventAttendance.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-center justify-between rounded-2xl border border-black/10 p-4"
-                  >
-                    <div>
-                      <p className="font-bold">
-                        {item.event?.start_date} — {item.event?.name}
-                      </p>
-                      <p className="text-black/60">
-                        {eventTypeLabels[item.event?.event_type] ||
-                          item.event?.event_type}{" "}
-                        · {item.event?.dojos?.name || "Bez dojo"} ·{" "}
-                        {item.event?.training_topics?.name || "Bez témy"}
-                      </p>
-                    </div>
+              <span className="rounded-xl bg-black px-4 py-2 text-sm font-bold text-white">
+                {showEventHistory ? "Skryť" : "Rozbaliť"}
+              </span>
+            </button>
 
-                    <span
-                      className={`rounded-xl px-4 py-2 font-bold ${
-                        item.status === "present"
-                          ? "bg-green-100 text-green-800"
-                          : "bg-red-100 text-red-800"
-                      }`}
-                    >
-                      {item.status === "present" ? "Prítomný" : "Neprítomný"}
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
+            {showEventHistory && (
+              <div className="mt-5 space-y-4">
+                <input
+                  value={eventSearch}
+                  onChange={(e) => setEventSearch(e.target.value)}
+                  placeholder="Vyhľadať podľa dátumu, názvu, typu, témy, dojo..."
+                  className="w-full rounded-xl border px-4 py-3"
+                />
+
+                <div className="grid gap-3">
+                  {filteredEventHistory.length === 0 ? (
+                    <p>Žiadna história seminárov alebo táborov pre tento filter.</p>
+                  ) : (
+                    filteredEventHistory.map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex items-center justify-between gap-4 rounded-2xl border border-black/10 p-4"
+                      >
+                        <div>
+                          <p className="font-bold">
+                            {item.event?.start_date} — {item.event?.name}
+                          </p>
+                          <p className="text-black/60">
+                            {eventTypeLabels[item.event?.event_type] ||
+                              item.event?.event_type}{" "}
+                            · {item.event?.dojos?.name || "Bez dojo"} ·{" "}
+                            {item.event?.training_topics?.name || "Bez témy"}
+                          </p>
+                        </div>
+
+                        <span
+                          className={`shrink-0 rounded-xl px-4 py-2 font-bold ${
+                            item.status === "present"
+                              ? "bg-green-100 text-green-800"
+                              : "bg-red-100 text-red-800"
+                          }`}
+                        >
+                          {statusLabel(item.status)}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           <Link
