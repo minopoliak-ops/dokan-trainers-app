@@ -36,9 +36,11 @@ export default function Header({ email }: { email?: string }) {
   const { permissions, loading, mounted } = usePermissions();
 
   const [unreadChatCount, setUnreadChatCount] = useState(0);
+  const [latestChatHref, setLatestChatHref] = useState("/chat");
 
   const isAdmin = !!permissions?.can_manage_trainers;
   const notificationsEnabled = permissions?.chat_notifications_enabled !== false;
+
   const showTopChatBanner =
     unreadChatCount > 0 && notificationsEnabled && pathname !== "/chat";
 
@@ -91,6 +93,7 @@ export default function Header({ email }: { email?: string }) {
   async function loadUnreadChatCount() {
     if (!permissions?.id || !notificationsEnabled) {
       setUnreadChatCount(0);
+      setLatestChatHref("/chat");
       return;
     }
 
@@ -98,7 +101,7 @@ export default function Header({ email }: { email?: string }) {
 
     const { data, error } = await supabase
       .from("trainer_chat_messages")
-      .select("id, trainer_id, recipient_trainer_id, room, read_by")
+      .select("id, trainer_id, recipient_trainer_id, room, read_by, created_at")
       .order("created_at", { ascending: false })
       .limit(200);
 
@@ -107,7 +110,7 @@ export default function Header({ email }: { email?: string }) {
       return;
     }
 
-    const count = (data || []).filter((m: any) => {
+    const unread = (data || []).filter((m: any) => {
       const me = permissions.id;
 
       if (m.trainer_id === me) return false;
@@ -119,9 +122,22 @@ export default function Header({ email }: { email?: string }) {
       if (m.room === "direct" && m.recipient_trainer_id === me) return true;
 
       return false;
-    }).length;
+    });
 
-    setUnreadChatCount(count);
+    setUnreadChatCount(unread.length);
+
+    const newest = unread[0];
+
+    if (!newest) {
+      setLatestChatHref("/chat");
+      return;
+    }
+
+    if (newest.room === "direct") {
+      setLatestChatHref(`/chat?trainer=${newest.trainer_id}`);
+    } else {
+      setLatestChatHref("/chat?trainer=all");
+    }
   }
 
   useEffect(() => {
@@ -184,7 +200,7 @@ export default function Header({ email }: { email?: string }) {
 
           {showTopChatBanner && (
             <Link
-              href="/chat"
+              href={latestChatHref}
               className="mt-3 flex items-center justify-between gap-3 rounded-2xl bg-[#d71920] px-4 py-3 text-white shadow-[0_8px_20px_rgba(215,25,32,0.25)] active:scale-[0.98]"
             >
               <div className="flex min-w-0 items-center gap-3">
@@ -197,7 +213,7 @@ export default function Header({ email }: { email?: string }) {
                     Máš {unreadChatCount === 1 ? "novú správu" : "nové správy"}
                   </p>
                   <p className="truncate text-xs text-white/75">
-                    Otvor chat trénerov
+                    Otvoriť chat, kde prišla správa
                   </p>
                 </div>
               </div>
@@ -229,10 +245,12 @@ export default function Header({ email }: { email?: string }) {
                 notificationsEnabled &&
                 (key === "chat" || (key === "more" && !chatIsVisibleInBottom));
 
+              const finalHref = key === "chat" ? latestChatHref : href;
+
               return (
                 <Link
                   key={key}
-                  href={href}
+                  href={finalHref}
                   className={`relative flex flex-col items-center justify-center rounded-2xl px-2 py-2 text-[11px] font-semibold transition active:scale-[0.96] ${
                     active ? "bg-[#111] text-white" : "text-black/55"
                   }`}

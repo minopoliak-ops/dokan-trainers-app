@@ -2,17 +2,23 @@
 
 import { createClient } from "@/lib/supabase/browser";
 import { usePermissions } from "@/lib/usePermissions";
-import { MessageCircle, Send, Users } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { Bell, BellOff, MessageCircle, Send, Users } from "lucide-react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 export default function ChatPage() {
   const { permissions } = usePermissions();
+  const searchParams = useSearchParams();
+
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   const [trainers, setTrainers] = useState<any[]>([]);
   const [messages, setMessages] = useState<any[]>([]);
   const [message, setMessage] = useState("");
   const [selectedTrainerId, setSelectedTrainerId] = useState("all");
   const [loading, setLoading] = useState(true);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [savingNotifications, setSavingNotifications] = useState(false);
 
   const isAllChat = selectedTrainerId === "all";
 
@@ -26,6 +32,53 @@ export default function ChatPage() {
       .order("full_name");
 
     if (!error) setTrainers(data || []);
+  }
+
+  async function loadNotificationSetting() {
+    if (!permissions?.id) return;
+
+    const supabase = createClient();
+
+    const { data, error } = await supabase
+      .from("trainers")
+      .select("chat_notifications_enabled")
+      .eq("id", permissions.id)
+      .maybeSingle();
+
+    if (!error) {
+      setNotificationsEnabled(data?.chat_notifications_enabled !== false);
+    }
+  }
+
+  async function toggleNotifications() {
+    if (!permissions?.id) return;
+
+    setSavingNotifications(true);
+
+    const nextValue = !notificationsEnabled;
+    const supabase = createClient();
+
+    const { error } = await supabase
+      .from("trainers")
+      .update({
+        chat_notifications_enabled: nextValue,
+      })
+      .eq("id", permissions.id);
+
+    setSavingNotifications(false);
+
+    if (error) return alert(error.message);
+
+    setNotificationsEnabled(nextValue);
+  }
+
+  function scrollToBottom() {
+    setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "end",
+      });
+    }, 150);
   }
 
   async function markMessagesAsRead(items: any[]) {
@@ -96,6 +149,7 @@ export default function ChatPage() {
     setMessages(visibleMessages);
     setLoading(false);
     markMessagesAsRead(visibleMessages);
+    scrollToBottom();
   }
 
   useEffect(() => {
@@ -103,6 +157,31 @@ export default function ChatPage() {
   }, []);
 
   useEffect(() => {
+    loadNotificationSetting();
+  }, [permissions?.id]);
+
+  useEffect(() => {
+    const fromUrl = searchParams.get("trainer");
+
+    if (fromUrl) {
+      setSelectedTrainerId(fromUrl);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("dokan-last-chat", fromUrl);
+      }
+      return;
+    }
+
+    if (typeof window !== "undefined") {
+      const saved = window.localStorage.getItem("dokan-last-chat");
+      if (saved) setSelectedTrainerId(saved);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("dokan-last-chat", selectedTrainerId);
+    }
+
     setLoading(true);
     loadMessages();
 
@@ -125,6 +204,10 @@ export default function ChatPage() {
       supabase.removeChannel(channel);
     };
   }, [permissions?.id, selectedTrainerId]);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages.length]);
 
   async function sendMessage(e: FormEvent) {
     e.preventDefault();
@@ -176,6 +259,27 @@ export default function ChatPage() {
         </div>
 
         <div className="rounded-[28px] bg-white p-4 shadow-sm ring-1 ring-black/10 md:p-5">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-bold text-black/60">Notifikácie chatu</p>
+              <p className="text-xs text-black/45">
+                Zapni alebo vypni upozornenia v aplikácii.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={toggleNotifications}
+              disabled={savingNotifications}
+              className={`flex shrink-0 items-center gap-2 rounded-2xl px-4 py-3 text-sm font-black text-white active:scale-[0.97] disabled:opacity-60 ${
+                notificationsEnabled ? "bg-[#d71920]" : "bg-black/40"
+              }`}
+            >
+              {notificationsEnabled ? <Bell size={18} /> : <BellOff size={18} />}
+              {notificationsEnabled ? "Zapnuté" : "Vypnuté"}
+            </button>
+          </div>
+
           <label className="mb-2 block text-sm font-bold text-black/60">
             Komu píšeš
           </label>
@@ -278,6 +382,8 @@ export default function ChatPage() {
                 );
               })
             )}
+
+            <div ref={messagesEndRef} />
           </div>
         </div>
 
