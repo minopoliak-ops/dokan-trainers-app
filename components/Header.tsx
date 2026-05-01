@@ -39,6 +39,8 @@ export default function Header({ email }: { email?: string }) {
 
   const isAdmin = !!permissions?.can_manage_trainers;
   const notificationsEnabled = permissions?.chat_notifications_enabled !== false;
+  const showTopChatBanner =
+    unreadChatCount > 0 && notificationsEnabled && pathname !== "/chat";
 
   async function logout() {
     const supabase = createClient();
@@ -114,7 +116,6 @@ export default function Header({ email }: { email?: string }) {
       if (readBy.includes(me)) return false;
 
       if (m.room === "all") return true;
-
       if (m.room === "direct" && m.recipient_trainer_id === me) return true;
 
       return false;
@@ -146,7 +147,7 @@ export default function Header({ email }: { email?: string }) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [permissions?.id, notificationsEnabled]);
+  }, [permissions?.id, notificationsEnabled, pathname]);
 
   return (
     <>
@@ -180,6 +181,32 @@ export default function Header({ email }: { email?: string }) {
               <span className="hidden sm:inline">Odhlásiť</span>
             </button>
           </div>
+
+          {showTopChatBanner && (
+            <Link
+              href="/chat"
+              className="mt-3 flex items-center justify-between gap-3 rounded-2xl bg-[#d71920] px-4 py-3 text-white shadow-[0_8px_20px_rgba(215,25,32,0.25)] active:scale-[0.98]"
+            >
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/20">
+                  <MessageCircle size={22} />
+                </div>
+
+                <div className="min-w-0">
+                  <p className="font-black">
+                    Máš {unreadChatCount === 1 ? "novú správu" : "nové správy"}
+                  </p>
+                  <p className="truncate text-xs text-white/75">
+                    Otvor chat trénerov
+                  </p>
+                </div>
+              </div>
+
+              <span className="flex h-7 min-w-7 items-center justify-center rounded-full bg-white px-2 text-sm font-black text-[#d71920]">
+                {unreadChatCount > 9 ? "9+" : unreadChatCount}
+              </span>
+            </Link>
+          )}
         </div>
       </header>
 
