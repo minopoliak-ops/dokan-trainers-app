@@ -2,15 +2,14 @@
 
 import { createClient } from "@/lib/supabase/browser";
 import { usePermissions } from "@/lib/usePermissions";
-import { Bell, BellOff, MessageCircle, Send, Users } from "lucide-react";
+import { Bell, BellOff, MessageCircle, Send } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
 
 export default function ChatPage() {
   const { permissions } = usePermissions();
-  const searchParams = useSearchParams();
 
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const messagesBoxRef = useRef<HTMLDivElement | null>(null);
+  const chatSectionRef = useRef<HTMLDivElement | null>(null);
 
   const [trainers, setTrainers] = useState<any[]>([]);
   const [messages, setMessages] = useState<any[]>([]);
@@ -22,16 +21,39 @@ export default function ChatPage() {
 
   const isAllChat = selectedTrainerId === "all";
 
+  function scrollMessagesToBottom() {
+    setTimeout(() => {
+      const box = messagesBoxRef.current;
+      if (!box) return;
+      box.scrollTop = box.scrollHeight;
+    }, 120);
+  }
+
+  function scrollPageToChat() {
+    setTimeout(() => {
+      const el = chatSectionRef.current;
+      if (!el) return;
+
+      const headerOffset = 95;
+      const top = el.getBoundingClientRect().top + window.scrollY - headerOffset;
+
+      window.scrollTo({
+        top,
+        behavior: "smooth",
+      });
+    }, 250);
+  }
+
   async function loadTrainers() {
     const supabase = createClient();
 
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("trainers")
       .select("id, full_name, email, active")
       .eq("active", true)
       .order("full_name");
 
-    if (!error) setTrainers(data || []);
+    setTrainers(data || []);
   }
 
   async function loadNotificationSetting() {
@@ -39,15 +61,13 @@ export default function ChatPage() {
 
     const supabase = createClient();
 
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("trainers")
       .select("chat_notifications_enabled")
       .eq("id", permissions.id)
       .maybeSingle();
 
-    if (!error) {
-      setNotificationsEnabled(data?.chat_notifications_enabled !== false);
-    }
+    setNotificationsEnabled(data?.chat_notifications_enabled !== false);
   }
 
   async function toggleNotifications() {
@@ -55,53 +75,36 @@ export default function ChatPage() {
 
     setSavingNotifications(true);
 
-    const nextValue = !notificationsEnabled;
+    const next = !notificationsEnabled;
     const supabase = createClient();
 
     const { error } = await supabase
       .from("trainers")
-      .update({
-        chat_notifications_enabled: nextValue,
-      })
+      .update({ chat_notifications_enabled: next })
       .eq("id", permissions.id);
 
     setSavingNotifications(false);
 
     if (error) return alert(error.message);
 
-    setNotificationsEnabled(nextValue);
-  }
-
-  function scrollToBottom() {
-    setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({
-        behavior: "smooth",
-        block: "end",
-      });
-    }, 150);
+    setNotificationsEnabled(next);
   }
 
   async function markMessagesAsRead(items: any[]) {
-    if (!permissions?.id || items.length === 0) return;
+    if (!permissions?.id) return;
 
     const supabase = createClient();
     const me = permissions.id;
 
-    const unread = items.filter((m: any) => {
-      if (m.trainer_id === me) return false;
+    for (const m of items) {
+      if (m.trainer_id === me) continue;
 
-      const readBy: string[] = Array.isArray(m.read_by) ? m.read_by : [];
-      return !readBy.includes(me);
-    });
-
-    for (const m of unread) {
-      const readBy: string[] = Array.isArray(m.read_by) ? m.read_by : [];
+      const readBy = Array.isArray(m.read_by) ? m.read_by : [];
+      if (readBy.includes(me)) continue;
 
       await supabase
         .from("trainer_chat_messages")
-        .update({
-          read_by: [...readBy, me],
-        })
+        .update({ read_by: [...readBy, me] })
         .eq("id", m.id);
     }
   }
@@ -113,28 +116,20 @@ export default function ChatPage() {
 
     let query = supabase
       .from("trainer_chat_messages")
-      .select(`
-        *,
-        trainers:trainer_id(full_name, email)
-      `)
+      .select("*, trainers:trainer_id(full_name, email)")
       .order("created_at", { ascending: true })
       .limit(200);
 
-    if (isAllChat) {
-      query = query.eq("room", "all");
-    } else {
-      query = query.eq("room", "direct");
-    }
+    query = isAllChat ? query.eq("room", "all") : query.eq("room", "direct");
 
     const { data, error } = await query;
 
     if (error) {
-      alert(error.message);
       setLoading(false);
-      return;
+      return alert(error.message);
     }
 
-    const visibleMessages = isAllChat
+    const visible = isAllChat
       ? data || []
       : (data || []).filter((m: any) => {
           const me = permissions.id;
@@ -146,10 +141,12 @@ export default function ChatPage() {
           );
         });
 
-    setMessages(visibleMessages);
+    setMessages(visible);
     setLoading(false);
-    markMessagesAsRead(visibleMessages);
-    scrollToBottom();
+
+    markMessagesAsRead(visible);
+    scrollMessagesToBottom();
+    scrollPageToChat();
   }
 
   useEffect(() => {
@@ -161,25 +158,26 @@ export default function ChatPage() {
   }, [permissions?.id]);
 
   useEffect(() => {
-    const fromUrl = searchParams.get("trainer");
+    if (typeof window === "undefined") return;
+
+    const url = new URL(window.location.href);
+    const fromUrl = url.searchParams.get("trainer");
 
     if (fromUrl) {
       setSelectedTrainerId(fromUrl);
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem("dokan-last-chat", fromUrl);
-      }
+      localStorage.setItem("dokan-last-chat", fromUrl);
       return;
     }
 
-    if (typeof window !== "undefined") {
-      const saved = window.localStorage.getItem("dokan-last-chat");
-      if (saved) setSelectedTrainerId(saved);
-    }
-  }, [searchParams]);
+    const saved = localStorage.getItem("dokan-last-chat");
+    if (saved) setSelectedTrainerId(saved);
+  }, []);
 
   useEffect(() => {
+    if (!permissions?.id) return;
+
     if (typeof window !== "undefined") {
-      window.localStorage.setItem("dokan-last-chat", selectedTrainerId);
+      localStorage.setItem("dokan-last-chat", selectedTrainerId);
     }
 
     setLoading(true);
@@ -191,11 +189,7 @@ export default function ChatPage() {
       .channel("trainer-chat")
       .on(
         "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "trainer_chat_messages",
-        },
+        { event: "*", schema: "public", table: "trainer_chat_messages" },
         () => loadMessages()
       )
       .subscribe();
@@ -206,14 +200,13 @@ export default function ChatPage() {
   }, [permissions?.id, selectedTrainerId]);
 
   useEffect(() => {
-    scrollToBottom();
+    scrollMessagesToBottom();
   }, [messages.length]);
 
   async function sendMessage(e: FormEvent) {
     e.preventDefault();
 
-    if (!permissions?.id) return alert("Nie si prihlásený ako tréner.");
-    if (!message.trim()) return;
+    if (!permissions?.id || !message.trim()) return;
 
     const supabase = createClient();
 
@@ -231,92 +224,68 @@ export default function ChatPage() {
     loadMessages();
   }
 
-  const selectedTrainer = useMemo(() => {
-    return trainers.find((t) => t.id === selectedTrainerId);
-  }, [trainers, selectedTrainerId]);
+  const selectedTrainer = useMemo(
+    () => trainers.find((t) => t.id === selectedTrainerId),
+    [trainers, selectedTrainerId]
+  );
 
   return (
-    <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40">
-      <div className="mx-auto max-w-5xl space-y-5">
-        <div className="overflow-hidden rounded-[32px] bg-[#111] text-white shadow-[0_18px_50px_rgba(0,0,0,0.22)]">
-          <div className="p-6 md:p-8">
-            <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#d71920]">
-              <MessageCircle size={28} />
+    <div className="min-h-screen bg-[#f7f2e8] px-4 pt-1 pb-40">
+      <div className="mx-auto max-w-5xl space-y-3">
+        <div className="rounded-2xl bg-[#111] p-4 text-white">
+          <div className="flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#d71920]">
+              <MessageCircle />
             </div>
-
-            <p className="text-sm font-bold uppercase tracking-[0.18em] text-white/45">
-              Interná komunikácia
-            </p>
-
-            <h1 className="mt-2 text-4xl font-black tracking-tight">
-              Chat trénerov
-            </h1>
-
-            <p className="mt-3 max-w-2xl text-white/65">
-              Správy pre všetkých trénerov alebo súkromne vybranému trénerovi.
-            </p>
+            <div>
+              <p className="text-xs text-white/50">Interná komunikácia</p>
+              <h1 className="text-2xl font-black">Chat trénerov</h1>
+            </div>
           </div>
         </div>
 
-        <div className="rounded-[28px] bg-white p-4 shadow-sm ring-1 ring-black/10 md:p-5">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-bold text-black/60">Notifikácie chatu</p>
-              <p className="text-xs text-black/45">
-                Zapni alebo vypni upozornenia v aplikácii.
-              </p>
-            </div>
-
+        <div className="rounded-2xl bg-white p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-bold">Notifikácie</span>
             <button
               type="button"
               onClick={toggleNotifications}
               disabled={savingNotifications}
-              className={`flex shrink-0 items-center gap-2 rounded-2xl px-4 py-3 text-sm font-black text-white active:scale-[0.97] disabled:opacity-60 ${
-                notificationsEnabled ? "bg-[#d71920]" : "bg-black/40"
+              className={`rounded-xl px-4 py-2 font-bold text-white disabled:opacity-60 ${
+                notificationsEnabled ? "bg-red-600" : "bg-gray-400"
               }`}
             >
-              {notificationsEnabled ? <Bell size={18} /> : <BellOff size={18} />}
-              {notificationsEnabled ? "Zapnuté" : "Vypnuté"}
+              {notificationsEnabled ? <Bell size={16} /> : <BellOff size={16} />}
             </button>
-          </div>
-
-          <label className="mb-2 block text-sm font-bold text-black/60">
-            Komu píšeš
-          </label>
-
-          <div className="grid gap-3 md:grid-cols-[1fr_auto]">
-            <select
-              value={selectedTrainerId}
-              onChange={(e) => {
-                setSelectedTrainerId(e.target.value);
-                setLoading(true);
-              }}
-              className="w-full rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 py-4 font-bold outline-none"
-            >
-              <option value="all">Všetci tréneri</option>
-              {trainers
-                .filter((t) => t.id !== permissions?.id)
-                .map((trainer) => (
-                  <option key={trainer.id} value={trainer.id}>
-                    {trainer.full_name || trainer.email}
-                  </option>
-                ))}
-            </select>
-
-            <div className="flex items-center gap-2 rounded-2xl bg-black px-4 py-3 text-sm font-bold text-white">
-              <Users size={18} />
-              {isAllChat ? "Skupina" : "Súkromne"}
-            </div>
           </div>
         </div>
 
-        <div className="overflow-hidden rounded-[28px] bg-white shadow-sm ring-1 ring-black/10">
-          <div className="border-b border-black/10 bg-white px-5 py-4">
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-black/35">
+        <div className="rounded-2xl bg-white p-4">
+          <select
+            value={selectedTrainerId}
+            onChange={(e) => {
+              setSelectedTrainerId(e.target.value);
+              setLoading(true);
+            }}
+            className="w-full rounded-xl bg-[#f7f2e8] p-3 font-bold"
+          >
+            <option value="all">Všetci tréneri</option>
+            {trainers
+              .filter((t) => t.id !== permissions?.id)
+              .map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.full_name || t.email}
+                </option>
+              ))}
+          </select>
+        </div>
+
+        <div ref={chatSectionRef} className="overflow-hidden rounded-2xl bg-white">
+          <div className="border-b border-black/10 px-4 py-3">
+            <p className="text-xs font-bold uppercase tracking-[0.14em] text-black/35">
               Aktuálny chat
             </p>
-
-            <h2 className="mt-1 text-xl font-black">
+            <h2 className="text-lg font-black">
               {isAllChat
                 ? "Všetci tréneri"
                 : selectedTrainer?.full_name ||
@@ -325,16 +294,19 @@ export default function ChatPage() {
             </h2>
           </div>
 
-          <div className="max-h-[58vh] min-h-[360px] space-y-3 overflow-y-auto bg-[#faf7ef] p-4 md:p-6">
+          <div
+            ref={messagesBoxRef}
+            className="h-[52vh] space-y-3 overflow-y-auto bg-[#faf7ef] p-4"
+          >
             {loading ? (
-              <div className="flex h-[300px] items-center justify-center">
-                <p className="rounded-2xl bg-white px-5 py-3 text-sm font-bold text-black/55 shadow-sm">
+              <div className="flex h-full items-center justify-center">
+                <p className="rounded-2xl bg-white px-5 py-3 text-sm font-bold text-black/55">
                   Načítavam správy...
                 </p>
               </div>
             ) : messages.length === 0 ? (
-              <div className="flex h-[300px] items-center justify-center">
-                <div className="max-w-sm rounded-3xl bg-white p-6 text-center shadow-sm ring-1 ring-black/5">
+              <div className="flex h-full items-center justify-center">
+                <div className="rounded-3xl bg-white p-6 text-center shadow-sm">
                   <MessageCircle className="mx-auto mb-3 text-[#d71920]" />
                   <p className="font-black">Zatiaľ žiadne správy</p>
                   <p className="mt-1 text-sm text-black/50">
@@ -352,60 +324,34 @@ export default function ChatPage() {
                     className={`flex ${mine ? "justify-end" : "justify-start"}`}
                   >
                     <div
-                      className={`max-w-[82%] rounded-[26px] px-4 py-3 shadow-sm ${
+                      className={`max-w-[82%] rounded-2xl px-4 py-3 shadow-sm ${
                         mine
-                          ? "rounded-br-md bg-[#d71920] text-white"
-                          : "rounded-bl-md bg-white text-black ring-1 ring-black/5"
+                          ? "rounded-br-md bg-red-600 text-white"
+                          : "rounded-bl-md bg-white text-black"
                       }`}
                     >
-                      <p
-                        className={`text-[11px] font-black ${
-                          mine ? "text-white/70" : "text-black/45"
-                        }`}
-                      >
+                      <div className="text-xs opacity-70">
                         {m.trainers?.full_name || m.trainers?.email || "Tréner"}
-                      </p>
-
-                      <p className="mt-1 whitespace-pre-wrap text-[15px] leading-relaxed">
-                        {m.message}
-                      </p>
-
-                      <p
-                        className={`mt-2 text-[10px] ${
-                          mine ? "text-white/55" : "text-black/35"
-                        }`}
-                      >
-                        {new Date(m.created_at).toLocaleString("sk-SK")}
-                      </p>
+                      </div>
+                      <p className="whitespace-pre-wrap">{m.message}</p>
                     </div>
                   </div>
                 );
               })
             )}
-
-            <div ref={messagesEndRef} />
           </div>
         </div>
 
-        <form
-          onSubmit={sendMessage}
-          className="fixed bottom-24 left-0 right-0 z-40 mx-auto max-w-5xl px-5"
-        >
-          <div className="flex gap-2 rounded-[26px] bg-white p-2 shadow-[0_12px_35px_rgba(0,0,0,0.18)] ring-1 ring-black/10">
+        <form onSubmit={sendMessage} className="fixed bottom-24 left-0 right-0 px-4">
+          <div className="mx-auto flex max-w-5xl gap-2 rounded-2xl bg-white p-2 shadow">
             <input
               value={message}
               onChange={(e) => setMessage(e.target.value)}
-              placeholder={
-                isAllChat ? "Správa pre všetkých..." : "Súkromná správa..."
-              }
-              className="min-w-0 flex-1 rounded-2xl bg-[#f7f2e8] px-4 py-4 font-medium outline-none"
+              className="min-w-0 flex-1 rounded-xl bg-[#f7f2e8] p-3"
+              placeholder="Správa..."
             />
-
-            <button
-              type="submit"
-              className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#d71920] text-white shadow-[0_8px_18px_rgba(215,25,32,0.25)] active:scale-[0.96]"
-            >
-              <Send size={22} />
+            <button className="rounded-xl bg-red-600 px-4 text-white">
+              <Send />
             </button>
           </div>
         </form>

@@ -24,8 +24,12 @@ const menus = [
   ["trainers", "Tréneri"],
   ["topics", "Témy"],
   ["trainings", "Tréningy"],
+  ["events", "Semináre"],
   ["stats", "Štatistiky"],
   ["emails", "Emaily"],
+  ["chat", "Chat"],
+  ["notes", "Poznámky"],
+  ["more", "Viac"],
 ];
 
 export default function TrainersPage() {
@@ -83,6 +87,7 @@ export default function TrainersPage() {
       email: String(form.get("email") || "").trim(),
       phone: String(form.get("phone") || "").trim() || null,
       active: true,
+      visible_menu: ["dashboard", "dojo", "more"],
     });
 
     if (error) return alert(error.message);
@@ -105,7 +110,10 @@ export default function TrainersPage() {
   }
 
   async function toggleMenu(trainer: any, key: string) {
-    const current = trainer.visible_menu || [];
+    const current = Array.isArray(trainer.visible_menu)
+      ? trainer.visible_menu
+      : [];
+
     const next = current.includes(key)
       ? current.filter((item: string) => item !== key)
       : [...current, key];
@@ -224,6 +232,10 @@ export default function TrainersPage() {
             (dojo) => !assignedIds.includes(dojo.id)
           );
 
+          const visibleMenu = Array.isArray(trainer.visible_menu)
+            ? trainer.visible_menu
+            : [];
+
           return (
             <div
               key={trainer.id}
@@ -239,6 +251,7 @@ export default function TrainersPage() {
                 </div>
 
                 <button
+                  type="button"
                   onClick={() => deleteTrainer(trainer.id)}
                   className="rounded-2xl bg-black/10 p-3 active:scale-[0.98]"
                 >
@@ -257,6 +270,7 @@ export default function TrainersPage() {
                   <div className="mb-3 flex flex-wrap gap-2">
                     {assigned.map((link) => (
                       <button
+                        type="button"
                         key={link.id}
                         onClick={() => removeTrainerDojo(link.id)}
                         className="inline-flex items-center gap-2 rounded-2xl bg-white px-3 py-2 text-sm font-bold text-black shadow-sm active:scale-[0.98]"
@@ -291,6 +305,7 @@ export default function TrainersPage() {
                 <div className="grid gap-2">
                   {permissions.map(([key, label]) => (
                     <button
+                      type="button"
                       key={key}
                       onClick={() => togglePermission(trainer, key)}
                       className={`rounded-2xl px-4 py-3 text-left font-semibold ${
@@ -312,10 +327,11 @@ export default function TrainersPage() {
                 <div className="flex flex-wrap gap-2">
                   {menus.map(([key, label]) => (
                     <button
+                      type="button"
                       key={key}
                       onClick={() => toggleMenu(trainer, key)}
                       className={`rounded-2xl px-4 py-2 font-bold ${
-                        (trainer.visible_menu || []).includes(key)
+                        visibleMenu.includes(key)
                           ? "bg-[#d71920] text-white"
                           : "bg-black/10 text-black"
                       }`}
