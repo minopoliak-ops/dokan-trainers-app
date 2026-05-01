@@ -7,14 +7,16 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Download,
   ExternalLink,
   Pencil,
   Plus,
   Search,
   Trash2,
+  Upload,
   X,
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 export default function TopicsPage() {
   const { permissions } = usePermissions();
@@ -22,12 +24,17 @@ export default function TopicsPage() {
   const canManageTopics =
     !!permissions?.can_manage_topics || !!permissions?.can_manage_trainers;
 
+  const importInputRef = useRef<HTMLInputElement | null>(null);
+
   const [topics, setTopics] = useState<any[]>([]);
   const [materials, setMaterials] = useState<any[]>([]);
   const [expandedTopics, setExpandedTopics] = useState<string[]>([]);
   const [search, setSearch] = useState("");
   const [editingMaterialId, setEditingMaterialId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const [importMode, setImportMode] = useState<"library" | "topic">("topic");
+  const [importTopicId, setImportTopicId] = useState("");
 
   async function loadData() {
     const supabase = createClient();
@@ -60,6 +67,212 @@ export default function TopicsPage() {
         </div>
       </div>
     );
+  }
+
+  function downloadJson(filename: string, data: any) {
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+      type: "application/json",
+    });
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+
+    a.href = url;
+    a.download = filename;
+    a.click();
+
+    URL.revokeObjectURL(url);
+  }
+
+  function exportLibrary() {
+    const payload = {
+      app: "DOKAN Trénerská zóna",
+      type: "training_topics_library",
+      version: 1,
+      exported_at: new Date().toISOString(),
+      topics: topics.map((topic) => ({
+        name: topic.name,
+        description: topic.description || "",
+        active: topic.active !== false,
+        materials: materials
+          .filter((m) => m.topic_id === topic.id)
+          .map((m) => ({
+            title: m.title,
+            content: m.content || "",
+            material_url: m.material_url || "",
+            completed_count: m.completed_count || 0,
+            last_completed_at: m.last_completed_at || null,
+          })),
+      })),
+    };
+
+    const date = new Date().toISOString().slice(0, 10);
+    downloadJson(`dokan-temy-materialy-${date}.json`, payload);
+  }
+
+  function exportSelectedTopic() {
+    if (!importTopicId) return alert("Vyber tému na export.");
+
+    const topic = topics.find((t) => t.id === importTopicId);
+    if (!topic) return alert("Téma sa nenašla.");
+
+    const payload = {
+      app: "DOKAN Trénerská zóna",
+      type: "training_topic_single",
+      version: 1,
+      exported_at: new Date().toISOString(),
+      topic: {
+        name: topic.name,
+        description: topic.description || "",
+        active: topic.active !== false,
+        materials: materials
+          .filter((m) => m.topic_id === topic.id)
+          .map((m) => ({
+            title: m.title,
+            content: m.content || "",
+            material_url: m.material_url || "",
+            completed_count: m.completed_count || 0,
+            last_completed_at: m.last_completed_at || null,
+          })),
+      },
+    };
+
+    const safeName = String(topic.name || "tema")
+      .toLowerCase()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9-]/g, "");
+
+    const date = new Date().toISOString().slice(0, 10);
+    downloadJson(`dokan-tema-${safeName || "export"}-${date}.json`, payload);
+  }
+
+  function openImportDialog() {
+    if (importMode === "topic" && !importTopicId) {
+      alert("Vyber tému, do ktorej chceš importovať.");
+      return;
+    }
+
+    importInputRef.current?.click();
+  }
+
+  async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const json = JSON.parse(text);
+
+      if (importMode === "topic") {
+        await importIntoSelectedTopic(json);
+      } else {
+        await importWholeLibrary(json);
+      }
+
+      await loadData();
+      alert("Import bol dokončený.");
+    } catch (error: any) {
+      alert(error?.message || "Import sa nepodaril.");
+    }
+  }
+
+  async function importIntoSelectedTopic(json: any) {
+    if (!importTopicId) throw new Error("Nie je vybraná téma.");
+
+    const supabase = createClient();
+
+    const importedMaterials =
+      json?.topic?.materials ||
+      json?.materials ||
+      json?.topics?.flatMap((t: any) => t.materials || []) ||
+      [];
+
+    if (!Array.isArray(importedMaterials) || importedMaterials.length === 0) {
+      throw new Error("Súbor neobsahuje žiadne materiály.");
+    }
+
+    const rows = importedMaterials
+      .map((m: any) => ({
+        topic_id: importTopicId,
+        title: String(m.title || "").trim(),
+        content: String(m.content || "").trim() || null,
+        material_url: String(m.material_url || m.url || "").trim() || null,
+        completed_count: Number(m.completed_count || 0),
+        last_completed_at: m.last_completed_at || null,
+        updated_at: new Date().toISOString(),
+      }))
+      .filter((m: any) => m.title);
+
+    if (rows.length === 0) {
+      throw new Error("Nenašli sa platné materiály s názvom.");
+    }
+
+    const { error } = await supabase.from("training_topic_materials").insert(rows);
+
+    if (error) throw new Error(error.message);
+  }
+
+  async function importWholeLibrary(json: any) {
+    const importedTopics =
+      json?.topics ||
+      (json?.topic ? [json.topic] : []);
+
+    if (!Array.isArray(importedTopics) || importedTopics.length === 0) {
+      throw new Error("Súbor neobsahuje žiadne témy.");
+    }
+
+    const supabase = createClient();
+
+    for (const importedTopic of importedTopics) {
+      const topicName = String(importedTopic.name || "").trim();
+      if (!topicName) continue;
+
+      let topicId = topics.find(
+        (t) => String(t.name).toLowerCase() === topicName.toLowerCase()
+      )?.id;
+
+      if (!topicId) {
+        const { data, error } = await supabase
+          .from("training_topics")
+          .insert({
+            name: topicName,
+            description: String(importedTopic.description || "").trim(),
+            active: importedTopic.active !== false,
+          })
+          .select("id")
+          .single();
+
+        if (error) throw new Error(error.message);
+
+        topicId = data.id;
+      }
+
+      const importedMaterials = Array.isArray(importedTopic.materials)
+        ? importedTopic.materials
+        : [];
+
+      const rows = importedMaterials
+        .map((m: any) => ({
+          topic_id: topicId,
+          title: String(m.title || "").trim(),
+          content: String(m.content || "").trim() || null,
+          material_url: String(m.material_url || m.url || "").trim() || null,
+          completed_count: Number(m.completed_count || 0),
+          last_completed_at: m.last_completed_at || null,
+          updated_at: new Date().toISOString(),
+        }))
+        .filter((m: any) => m.title);
+
+      if (rows.length > 0) {
+        const { error } = await supabase
+          .from("training_topic_materials")
+          .insert(rows);
+
+        if (error) throw new Error(error.message);
+      }
+    }
   }
 
   async function addTopic(e: FormEvent<HTMLFormElement>) {
@@ -219,6 +432,7 @@ export default function TopicsPage() {
   }
 
   const totalMaterials = materials.length;
+
   const completedTotal = useMemo(() => {
     return materials.reduce(
       (sum, item) => sum + Number(item.completed_count || 0),
@@ -228,6 +442,14 @@ export default function TopicsPage() {
 
   return (
     <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40 space-y-6">
+      <input
+        ref={importInputRef}
+        type="file"
+        accept="application/json,.json"
+        onChange={handleImportFile}
+        className="hidden"
+      />
+
       <div className="overflow-hidden rounded-[32px] bg-[#111] text-white shadow-[0_18px_45px_rgba(0,0,0,0.25)]">
         <div className="p-6">
           <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#d71920]">
@@ -262,6 +484,64 @@ export default function TopicsPage() {
               <p className="text-3xl font-black">{completedTotal}</p>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div className="rounded-[28px] bg-white p-5 shadow-sm ring-1 ring-black/10">
+        <h2 className="mb-4 text-xl font-black">Import / Export knižnice</h2>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          <button
+            type="button"
+            onClick={exportLibrary}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#111] px-4 py-3 font-bold text-white active:scale-[0.98]"
+          >
+            <Download size={18} />
+            Exportovať celú knižnicu
+          </button>
+
+          <button
+            type="button"
+            onClick={exportSelectedTopic}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-black/10 px-4 py-3 font-bold text-black active:scale-[0.98]"
+          >
+            <Download size={18} />
+            Exportovať vybranú tému
+          </button>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <select
+            value={importMode}
+            onChange={(e) => setImportMode(e.target.value as "library" | "topic")}
+            className="rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 py-3 font-bold"
+          >
+            <option value="topic">Importovať do vybranej témy</option>
+            <option value="library">Importovať celú knižnicu</option>
+          </select>
+
+          <select
+            value={importTopicId}
+            onChange={(e) => setImportTopicId(e.target.value)}
+            disabled={importMode === "library"}
+            className="rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 py-3 font-bold disabled:opacity-40"
+          >
+            <option value="">Vyber tému</option>
+            {topics.map((topic) => (
+              <option key={topic.id} value={topic.id}>
+                {topic.name}
+              </option>
+            ))}
+          </select>
+
+          <button
+            type="button"
+            onClick={openImportDialog}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#d71920] px-4 py-3 font-bold text-white active:scale-[0.98]"
+          >
+            <Upload size={18} />
+            Importovať JSON
+          </button>
         </div>
       </div>
 
