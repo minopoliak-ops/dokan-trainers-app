@@ -16,7 +16,14 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ChangeEvent,
+  FormEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 export default function TopicsPage() {
   const { permissions } = usePermissions();
@@ -84,6 +91,160 @@ export default function TopicsPage() {
     URL.revokeObjectURL(url);
   }
 
+  function downloadText(filename: string, text: string) {
+    const blob = new Blob([text], {
+      type: "text/plain;charset=utf-8",
+    });
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+
+    a.href = url;
+    a.download = filename;
+    a.click();
+
+    URL.revokeObjectURL(url);
+  }
+
+  function topicToText(topic: any, topicMaterials: any[]) {
+    const lines: string[] = [];
+
+    lines.push(`TÉMA: ${topic.name}`);
+    lines.push(`POPIS: ${topic.description || ""}`);
+    lines.push("");
+
+    topicMaterials.forEach((material) => {
+      lines.push(`MATERIÁL: ${material.title}`);
+      lines.push("OBSAH:");
+      lines.push(material.content || "");
+      lines.push(`LINK: ${material.material_url || ""}`);
+      lines.push(`PREBRATÉ: ${material.completed_count || 0}`);
+      lines.push("");
+    });
+
+    return lines.join("\n");
+  }
+
+  function parseTxtImport(text: string) {
+    const lines = text.replace(/\r/g, "").split("\n");
+
+    const parsedTopics: any[] = [];
+    let currentTopic: any = null;
+    let currentMaterial: any = null;
+    let readingContent = false;
+
+    function saveMaterial() {
+      if (currentTopic && currentMaterial?.title) {
+        currentTopic.materials.push(currentMaterial);
+      }
+
+      currentMaterial = null;
+      readingContent = false;
+    }
+
+    function saveTopic() {
+      saveMaterial();
+
+      if (currentTopic?.name) {
+        parsedTopics.push(currentTopic);
+      }
+
+      currentTopic = null;
+    }
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+
+      if (line.startsWith("TÉMA:") || line.startsWith("TEMA:")) {
+        saveTopic();
+
+        currentTopic = {
+          name: line.replace(/^TÉMA:|^TEMA:/, "").trim(),
+          description: "",
+          active: true,
+          materials: [],
+        };
+
+        continue;
+      }
+
+      if (!currentTopic) {
+        currentTopic = {
+          name: "Importovaná téma",
+          description: "",
+          active: true,
+          materials: [],
+        };
+      }
+
+      if (line.startsWith("POPIS:")) {
+        currentTopic.description = line.replace(/^POPIS:/, "").trim();
+        readingContent = false;
+        continue;
+      }
+
+      if (line.startsWith("MATERIÁL:") || line.startsWith("MATERIAL:")) {
+        saveMaterial();
+
+        currentMaterial = {
+          title: line.replace(/^MATERIÁL:|^MATERIAL:/, "").trim(),
+          content: "",
+          material_url: "",
+          completed_count: 0,
+        };
+
+        continue;
+      }
+
+      if (line.startsWith("OBSAH:")) {
+        if (!currentMaterial) {
+          currentMaterial = {
+            title: "Bez názvu",
+            content: "",
+            material_url: "",
+            completed_count: 0,
+          };
+        }
+
+        readingContent = true;
+        continue;
+      }
+
+      if (line.startsWith("LINK:")) {
+        if (currentMaterial) {
+          currentMaterial.material_url = line.replace(/^LINK:/, "").trim();
+        }
+
+        readingContent = false;
+        continue;
+      }
+
+      if (line.startsWith("PREBRATÉ:") || line.startsWith("PREBRATE:")) {
+        if (currentMaterial) {
+          const value = line.replace(/^PREBRATÉ:|^PREBRATE:/, "").trim();
+          currentMaterial.completed_count = Number(value || 0);
+        }
+
+        readingContent = false;
+        continue;
+      }
+
+      if (readingContent && currentMaterial) {
+        currentMaterial.content +=
+          currentMaterial.content.length > 0 ? `\n${rawLine}` : rawLine;
+      }
+    }
+
+    saveTopic();
+
+    return {
+      app: "DOKAN Trénerská zóna",
+      type: "training_topics_txt_import",
+      version: 1,
+      topics: parsedTopics,
+    };
+  }
+
   function exportLibrary() {
     const payload = {
       app: "DOKAN Trénerská zóna",
@@ -146,6 +307,44 @@ export default function TopicsPage() {
     downloadJson(`dokan-tema-${safeName || "export"}-${date}.json`, payload);
   }
 
+  function exportLibraryTxt() {
+    const parts: string[] = [];
+
+    parts.push("DOKAN – Tréningové témy");
+    parts.push(`Export: ${new Date().toLocaleString("sk-SK")}`);
+    parts.push("");
+
+    topics.forEach((topic) => {
+      const topicMaterials = materials.filter((m) => m.topic_id === topic.id);
+      parts.push(topicToText(topic, topicMaterials));
+      parts.push("--------------------------------------------------");
+      parts.push("");
+    });
+
+    const date = new Date().toISOString().slice(0, 10);
+    downloadText(`dokan-temy-materialy-${date}.txt`, parts.join("\n"));
+  }
+
+  function exportSelectedTopicTxt() {
+    if (!importTopicId) return alert("Vyber tému na export.");
+
+    const topic = topics.find((t) => t.id === importTopicId);
+    if (!topic) return alert("Téma sa nenašla.");
+
+    const topicMaterials = materials.filter((m) => m.topic_id === topic.id);
+
+    const safeName = String(topic.name || "tema")
+      .toLowerCase()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9-]/g, "");
+
+    const date = new Date().toISOString().slice(0, 10);
+    downloadText(
+      `dokan-tema-${safeName || "export"}-${date}.txt`,
+      topicToText(topic, topicMaterials)
+    );
+  }
+
   function openImportDialog() {
     if (importMode === "topic" && !importTopicId) {
       alert("Vyber tému, do ktorej chceš importovať.");
@@ -155,7 +354,7 @@ export default function TopicsPage() {
     importInputRef.current?.click();
   }
 
-  async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleImportFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
 
@@ -163,12 +362,13 @@ export default function TopicsPage() {
 
     try {
       const text = await file.text();
-      const json = JSON.parse(text);
+      const isTxt = file.name.toLowerCase().endsWith(".txt");
+      const data = isTxt ? parseTxtImport(text) : JSON.parse(text);
 
       if (importMode === "topic") {
-        await importIntoSelectedTopic(json);
+        await importIntoSelectedTopic(data);
       } else {
-        await importWholeLibrary(json);
+        await importWholeLibrary(data);
       }
 
       await loadData();
@@ -215,9 +415,7 @@ export default function TopicsPage() {
   }
 
   async function importWholeLibrary(json: any) {
-    const importedTopics =
-      json?.topics ||
-      (json?.topic ? [json.topic] : []);
+    const importedTopics = json?.topics || (json?.topic ? [json.topic] : []);
 
     if (!Array.isArray(importedTopics) || importedTopics.length === 0) {
       throw new Error("Súbor neobsahuje žiadne témy.");
@@ -445,7 +643,7 @@ export default function TopicsPage() {
       <input
         ref={importInputRef}
         type="file"
-        accept="application/json,.json"
+        accept="application/json,text/plain,.json,.txt"
         onChange={handleImportFile}
         className="hidden"
       />
@@ -490,14 +688,14 @@ export default function TopicsPage() {
       <div className="rounded-[28px] bg-white p-5 shadow-sm ring-1 ring-black/10">
         <h2 className="mb-4 text-xl font-black">Import / Export knižnice</h2>
 
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-4">
           <button
             type="button"
             onClick={exportLibrary}
             className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#111] px-4 py-3 font-bold text-white active:scale-[0.98]"
           >
             <Download size={18} />
-            Exportovať celú knižnicu
+            Export JSON knižnica
           </button>
 
           <button
@@ -506,7 +704,25 @@ export default function TopicsPage() {
             className="inline-flex items-center justify-center gap-2 rounded-2xl bg-black/10 px-4 py-3 font-bold text-black active:scale-[0.98]"
           >
             <Download size={18} />
-            Exportovať vybranú tému
+            Export JSON téma
+          </button>
+
+          <button
+            type="button"
+            onClick={exportLibraryTxt}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#111] px-4 py-3 font-bold text-white active:scale-[0.98]"
+          >
+            <Download size={18} />
+            Export TXT knižnica
+          </button>
+
+          <button
+            type="button"
+            onClick={exportSelectedTopicTxt}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-black/10 px-4 py-3 font-bold text-black active:scale-[0.98]"
+          >
+            <Download size={18} />
+            Export TXT téma
           </button>
         </div>
 
@@ -540,7 +756,7 @@ export default function TopicsPage() {
             className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#d71920] px-4 py-3 font-bold text-white active:scale-[0.98]"
           >
             <Upload size={18} />
-            Importovať JSON
+            Importovať JSON/TXT
           </button>
         </div>
       </div>
