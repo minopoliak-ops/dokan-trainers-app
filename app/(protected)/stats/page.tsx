@@ -4,6 +4,16 @@ import { createClient } from "@/lib/supabase/browser";
 import { usePermissions } from "@/lib/usePermissions";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import {
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 const eventTypeLabels: Record<string, string> = {
   training: "Tréning",
@@ -30,123 +40,53 @@ function AttendanceGraph({
   oldMonth: { label: string; present: number; absent: number };
   newMonth: { label: string; present: number; absent: number };
 }) {
-  const maxValue = Math.max(
-    oldMonth.present,
-    oldMonth.absent,
-    newMonth.present,
-    newMonth.absent,
-    1
-  );
-
-  const chartWidth = 420;
-  const leftX = 90;
-  const rightX = 330;
-  const topY = 20;
-  const bottomY = 105;
-
-  function getY(value: number) {
-    return bottomY - (value / maxValue) * (bottomY - topY);
-  }
-
-  const oldPresentY = getY(oldMonth.present);
-  const oldAbsentY = getY(oldMonth.absent);
-  const newPresentY = getY(newMonth.present);
-  const newAbsentY = getY(newMonth.absent);
+  const data = [
+    {
+      type: "Prítomný",
+      [oldMonth.label]: oldMonth.present,
+      [newMonth.label]: newMonth.present,
+    },
+    {
+      type: "Neprítomný",
+      [oldMonth.label]: oldMonth.absent,
+      [newMonth.label]: newMonth.absent,
+    },
+  ];
 
   return (
     <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
-      <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">Porovnanie mesiacov</h2>
-          <p className="text-black/60">
-            Červená = predchádzajúci mesiac, zelená = najnovší mesiac.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap gap-2 text-sm">
-          <span className="rounded-xl bg-red-100 px-3 py-2 font-bold text-red-800">
-            {oldMonth.label}
-          </span>
-          <span className="rounded-xl bg-green-100 px-3 py-2 font-bold text-green-800">
-            {newMonth.label}
-          </span>
-        </div>
+      <div className="mb-4">
+        <h2 className="text-2xl font-bold">Porovnanie mesiacov</h2>
+        <p className="text-black/60">
+          Dochádzka vybraného cvičiaceho za posledné mesiace.
+        </p>
       </div>
 
-      <svg
-        viewBox={`0 0 ${chartWidth} 170`}
-        className="mx-auto block w-full max-w-2xl"
-      >
-        <line x1="55" y1={bottomY} x2="370" y2={bottomY} stroke="#e5e5e5" />
-        <line x1="55" y1={topY} x2="55" y2={bottomY} stroke="#e5e5e5" />
-
-        <text x={leftX} y="145" textAnchor="middle" fontSize="14">
-          Prítomný
-        </text>
-        <text x={rightX} y="145" textAnchor="middle" fontSize="14">
-          Neprítomný
-        </text>
-
-        <polyline
-          points={`${leftX},${oldPresentY} ${rightX},${oldAbsentY}`}
-          fill="none"
-          stroke="#dc2626"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-
-        <polyline
-          points={`${leftX},${newPresentY} ${rightX},${newAbsentY}`}
-          fill="none"
-          stroke="#16a34a"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-
-        <circle cx={leftX} cy={oldPresentY} r="5" fill="#dc2626" />
-        <circle cx={rightX} cy={oldAbsentY} r="5" fill="#dc2626" />
-        <circle cx={leftX} cy={newPresentY} r="5" fill="#16a34a" />
-        <circle cx={rightX} cy={newAbsentY} r="5" fill="#16a34a" />
-
-        <text
-          x={leftX}
-          y={oldPresentY - 10}
-          textAnchor="middle"
-          fontSize="13"
-          fill="#dc2626"
-        >
-          {oldMonth.present}
-        </text>
-        <text
-          x={rightX}
-          y={oldAbsentY - 10}
-          textAnchor="middle"
-          fontSize="13"
-          fill="#dc2626"
-        >
-          {oldMonth.absent}
-        </text>
-        <text
-          x={leftX}
-          y={newPresentY - 10}
-          textAnchor="middle"
-          fontSize="13"
-          fill="#16a34a"
-        >
-          {newMonth.present}
-        </text>
-        <text
-          x={rightX}
-          y={newAbsentY - 10}
-          textAnchor="middle"
-          fontSize="13"
-          fill="#16a34a"
-        >
-          {newMonth.absent}
-        </text>
-      </svg>
+      <ResponsiveContainer width="100%" height={280}>
+        <LineChart data={data}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey="type" />
+          <YAxis allowDecimals={false} />
+          <Tooltip />
+          <Legend />
+          <Line
+            type="monotone"
+            dataKey={oldMonth.label}
+            stroke="#dc2626"
+            strokeWidth={3}
+            dot={{ r: 6 }}
+            activeDot={{ r: 8 }}
+          />
+          <Line
+            type="monotone"
+            dataKey={newMonth.label}
+            stroke="#16a34a"
+            strokeWidth={3}
+            dot={{ r: 6 }}
+            activeDot={{ r: 8 }}
+          />
+        </LineChart>
+      </ResponsiveContainer>
     </div>
   );
 }
@@ -224,18 +164,12 @@ export default function StatsPage() {
 
     const attendanceResult =
       trainingIds.length > 0
-        ? await supabase
-            .from("attendance")
-            .select("*")
-            .in("training_id", trainingIds)
+        ? await supabase.from("attendance").select("*").in("training_id", trainingIds)
         : { data: [], error: null };
 
     const eventAttendanceResult =
       eventIds.length > 0
-        ? await supabase
-            .from("event_attendance")
-            .select("*")
-            .in("event_id", eventIds)
+        ? await supabase.from("event_attendance").select("*").in("event_id", eventIds)
         : { data: [], error: null };
 
     if (dojosResult.error) alert(dojosResult.error.message);
@@ -243,8 +177,7 @@ export default function StatsPage() {
     if (trainingsResult.error) alert(trainingsResult.error.message);
     if (eventsResult.error) console.error(eventsResult.error.message);
     if (attendanceResult.error) alert(attendanceResult.error.message);
-    if (eventAttendanceResult.error)
-      console.error(eventAttendanceResult.error.message);
+    if (eventAttendanceResult.error) console.error(eventAttendanceResult.error.message);
 
     setDojos(dojosResult.data || []);
     setStudents(studentsResult.data || []);
@@ -272,9 +205,7 @@ export default function StatsPage() {
         dojoTrainingIds.includes(a.training_id)
       );
 
-      const present = dojoAttendance.filter(
-        (a) => a.status === "present"
-      ).length;
+      const present = dojoAttendance.filter((a) => a.status === "present").length;
       const absent = dojoAttendance.filter((a) => a.status === "absent").length;
 
       const topics = new Set(
@@ -283,12 +214,8 @@ export default function StatsPage() {
 
       const dojoEvents = events.filter((e) => e.dojo_id === dojo.id);
       const eventIds = dojoEvents.map((e) => e.id);
-      const eventAtt = eventAttendance.filter((a) =>
-        eventIds.includes(a.event_id)
-      );
-      const eventPresent = eventAtt.filter(
-        (a) => a.status === "present"
-      ).length;
+      const eventAtt = eventAttendance.filter((a) => eventIds.includes(a.event_id));
+      const eventPresent = eventAtt.filter((a) => a.status === "present").length;
 
       return {
         dojo,
@@ -344,8 +271,7 @@ export default function StatsPage() {
     (a) => a.status === "absent"
   ).length;
   const totalCount = studentTrainingAttendance.length;
-  const percent =
-    totalCount > 0 ? Math.round((presentCount / totalCount) * 100) : 0;
+  const percent = totalCount > 0 ? Math.round((presentCount / totalCount) * 100) : 0;
 
   const eventPresentCount = studentEventAttendance.filter(
     (a) => a.status === "present"
@@ -515,16 +441,12 @@ export default function StatsPage() {
 
             <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
               <p className="text-black/60">Tréningy prítomný</p>
-              <h2 className="text-4xl font-black text-green-700">
-                {presentCount}
-              </h2>
+              <h2 className="text-4xl font-black text-green-700">{presentCount}</h2>
             </div>
 
             <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
               <p className="text-black/60">Tréningy neprítomný</p>
-              <h2 className="text-4xl font-black text-red-700">
-                {absentCount}
-              </h2>
+              <h2 className="text-4xl font-black text-red-700">{absentCount}</h2>
             </div>
 
             <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
@@ -549,17 +471,10 @@ export default function StatsPage() {
               ) : (
                 <div className="grid gap-3">
                   {topicStats.map(([topic, stat]) => (
-                    <div
-                      key={topic}
-                      className="rounded-2xl border border-black/10 p-4"
-                    >
+                    <div key={topic} className="rounded-2xl border border-black/10 p-4">
                       <p className="text-lg font-bold">{topic}</p>
-                      <p className="text-green-700">
-                        Prítomný: {stat.present}
-                      </p>
-                      <p className="text-red-700">
-                        Neprítomný: {stat.absent}
-                      </p>
+                      <p className="text-green-700">Prítomný: {stat.present}</p>
+                      <p className="text-red-700">Neprítomný: {stat.absent}</p>
                     </div>
                   ))}
                 </div>
@@ -589,17 +504,10 @@ export default function StatsPage() {
               ) : (
                 <div className="grid gap-3">
                   {eventTypeStats.map(([type, stat]) => (
-                    <div
-                      key={type}
-                      className="rounded-2xl border border-black/10 p-4"
-                    >
+                    <div key={type} className="rounded-2xl border border-black/10 p-4">
                       <p className="font-bold">{type}</p>
-                      <p className="text-green-700">
-                        Prítomný: {stat.present}
-                      </p>
-                      <p className="text-red-700">
-                        Neprítomný: {stat.absent}
-                      </p>
+                      <p className="text-green-700">Prítomný: {stat.present}</p>
+                      <p className="text-red-700">Neprítomný: {stat.absent}</p>
                     </div>
                   ))}
                 </div>
@@ -645,9 +553,7 @@ export default function StatsPage() {
           </div>
 
           <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
-            <h2 className="mb-4 text-2xl font-bold">
-              História seminárov a táborov
-            </h2>
+            <h2 className="mb-4 text-2xl font-bold">História seminárov a táborov</h2>
 
             <div className="grid gap-3">
               {studentEventAttendance.length === 0 ? (
