@@ -37,6 +37,46 @@ function statusLabel(status: string) {
   return status === "present" ? "Prítomný" : "Neprítomný";
 }
 
+function currentMonthStart() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+}
+
+function previousMonthEnd() {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth(), 0).toISOString().slice(0, 10);
+}
+
+function juneEndDefault() {
+  const d = new Date();
+  return `${d.getFullYear()}-06-30`;
+}
+
+function safeArchiveDeleteDate(archiveUntil: string) {
+  const prevEnd = previousMonthEnd();
+  if (!archiveUntil) return prevEnd;
+
+  // Nikdy nedovolíme vymazať aktuálny mesiac ani budúcnosť.
+  return archiveUntil > prevEnd ? prevEnd : archiveUntil;
+}
+
+function downloadJson(filename: string, data: any) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], {
+    type: "application/json",
+  });
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 function AttendanceGraph({
   oldMonth,
   newMonth,
@@ -114,6 +154,10 @@ export default function StatsPage() {
   const [trainingSearch, setTrainingSearch] = useState("");
   const [eventSearch, setEventSearch] = useState("");
 
+  const [archiveUntil, setArchiveUntil] = useState(juneEndDefault());
+  const [archiveDownloaded, setArchiveDownloaded] = useState(false);
+  const [archiveWorking, setArchiveWorking] = useState(false);
+
   async function loadData() {
     if (!permissions) return;
 
@@ -172,18 +216,26 @@ export default function StatsPage() {
 
     const attendanceResult =
       trainingIds.length > 0
-        ? await supabase.from("attendance").select("*").in("training_id", trainingIds)
+        ? await supabase
+            .from("attendance")
+            .select("*")
+            .in("training_id", trainingIds)
         : { data: [], error: null };
 
     const eventAttendanceResult =
       eventIds.length > 0
-        ? await supabase.from("event_attendance").select("*").in("event_id", eventIds)
+        ? await supabase
+            .from("event_attendance")
+            .select("*")
+            .in("event_id", eventIds)
         : { data: [], error: null };
 
     if (dojosResult.error) alert(dojosResult.error.message);
     if (studentsResult.error) alert(studentsResult.error.message);
     if (trainingsResult.error) alert(trainingsResult.error.message);
+    if (eventsResult.error) console.error(eventsResult.error.message);
     if (attendanceResult.error) alert(attendanceResult.error.message);
+    if (eventAttendanceResult.error) console.error(eventAttendanceResult.error.message);
 
     setDojos(dojosResult.data || []);
     setStudents(studentsResult.data || []);
@@ -319,7 +371,8 @@ export default function StatsPage() {
     (a) => a.status === "absent"
   ).length;
   const totalCount = studentTrainingAttendance.length;
-  const percent = totalCount > 0 ? Math.round((presentCount / totalCount) * 100) : 0;
+  const percent =
+    totalCount > 0 ? Math.round((presentCount / totalCount) * 100) : 0;
 
   const eventPresentCount = studentEventAttendance.filter(
     (a) => a.status === "present"
@@ -392,6 +445,147 @@ export default function StatsPage() {
     };
   }, [studentTrainingAttendance]);
 
+  const archiveDeleteUntil = safeArchiveDeleteDate(archiveUntil);
+  const currentMonth = currentMonthStart();
+
+  const archiveTrainings = useMemo(() => {
+    return trainings.filter((t) => t.training_date <= archiveDeleteUntil);
+  }, [trainings, archiveDeleteUntil]);
+
+  const archiveTrainingIds = useMemo(
+    () => archiveTrainings.map((t) => t.id),
+    [archiveTrainings]
+  );
+
+  const archiveAttendance = useMemo(() => {
+    return attendance.filter((a) => archiveTrainingIds.includes(a.training_id));
+  }, [attendance, archiveTrainingIds]);
+
+  const archiveEvents = useMemo(() => {
+    return events.filter((e) => e.start_date <= archiveDeleteUntil);
+  }, [events, archiveDeleteUntil]);
+
+  const archiveEventIds = useMemo(
+    () => archiveEvents.map((e) => e.id),
+    [archiveEvents]
+  );
+
+  const archiveEventAttendance = useMemo(() => {
+    return eventAttendance.filter((a) => archiveEventIds.includes(a.event_id));
+  }, [eventAttendance, archiveEventIds]);
+
+  function exportArchive() {
+    if (!isAdmin) return;
+
+    const archive = {
+      created_at: new Date().toISOString(),
+      archive_until_requested: archiveUntil,
+      archive_until_used: archiveDeleteUntil,
+      current_month_locked_from: currentMonth,
+      note:
+        "Aktuálny mesiac a budúcnosť sa nemažú. Žiaci, dojo, tréneri a témy zostávajú v systéme.",
+      dojos,
+      students,
+      trainings: archiveTrainings,
+      attendance: archiveAttendance,
+      events: archiveEvents,
+      event_attendance: archiveEventAttendance,
+    };
+
+    downloadJson(`dokan-archive-do-${archiveDeleteUntil}.json`, archive);
+    setArchiveDownloaded(true);
+  }
+
+  async function deleteArchivedHistory() {
+    if (!isAdmin) return;
+
+    if (!archiveDownloaded) {
+      alert("Najprv stiahni archív. Až potom sa dá mazať.");
+      return;
+    }
+
+    if (archiveDeleteUntil >= currentMonth) {
+      alert("Aktuálny mesiac je zamknutý a nesmie sa vymazať.");
+      return;
+    }
+
+    if (archiveTrainings.length === 0 && archiveEvents.length === 0) {
+      alert("Nie je čo vymazať pre zvolený dátum.");
+      return;
+    }
+
+    const ok = confirm(
+      `Naozaj vymazať históriu do ${archiveDeleteUntil}?\n\n` +
+        `Vymažú sa staré tréningy, prezenčka tréningov, semináre/tábory a ich prezenčka.\n` +
+        `Aktuálny mesiac sa nevymaže. Žiaci, dojo, tréneri a témy zostanú.`
+    );
+
+    if (!ok) return;
+
+    setArchiveWorking(true);
+
+    const supabase = createClient();
+
+    if (archiveTrainingIds.length > 0) {
+      const { error: attendanceDeleteError } = await supabase
+        .from("attendance")
+        .delete()
+        .in("training_id", archiveTrainingIds);
+
+      if (attendanceDeleteError) {
+        setArchiveWorking(false);
+        return alert(attendanceDeleteError.message);
+      }
+
+      const { error: trainingsDeleteError } = await supabase
+        .from("trainings")
+        .delete()
+        .in("id", archiveTrainingIds);
+
+      if (trainingsDeleteError) {
+        setArchiveWorking(false);
+        return alert(trainingsDeleteError.message);
+      }
+    }
+
+    if (archiveEventIds.length > 0) {
+      const { error: eventAttendanceDeleteError } = await supabase
+        .from("event_attendance")
+        .delete()
+        .in("event_id", archiveEventIds);
+
+      if (eventAttendanceDeleteError) {
+        setArchiveWorking(false);
+        return alert(eventAttendanceDeleteError.message);
+      }
+
+      // Ak tabuľka existuje, vyčistí aj externých účastníkov. Ak nie, iba zaloguje chybu.
+      const { error: externalDeleteError } = await supabase
+        .from("event_external_participants")
+        .delete()
+        .in("event_id", archiveEventIds);
+
+      if (externalDeleteError) {
+        console.error(externalDeleteError.message);
+      }
+
+      const { error: eventsDeleteError } = await supabase
+        .from("events")
+        .delete()
+        .in("id", archiveEventIds);
+
+      if (eventsDeleteError) {
+        setArchiveWorking(false);
+        return alert(eventsDeleteError.message);
+      }
+    }
+
+    setArchiveWorking(false);
+    setArchiveDownloaded(false);
+    alert("Archivovaná história bola vymazaná.");
+    loadData();
+  }
+
   return (
     <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40 space-y-6">
       <div className="rounded-3xl bg-brand-black p-6 text-white shadow-lg">
@@ -402,6 +596,76 @@ export default function StatsPage() {
             : "Štatistiky iba pre tvoje priradené dojo."}
         </p>
       </div>
+
+      {isAdmin && (
+        <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
+          <h2 className="text-2xl font-bold">Archív sezóny</h2>
+          <p className="mt-2 text-sm text-black/60">
+            Najprv stiahni archív. Mazanie sa odomkne až potom. Aktuálny mesiac
+            je vždy zamknutý a nedá sa vymazať.
+          </p>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-4">
+            <div className="md:col-span-2">
+              <label className="mb-1 block text-sm font-bold text-black/60">
+                Archivovať do dátumu
+              </label>
+              <input
+                type="date"
+                value={archiveUntil}
+                onChange={(e) => {
+                  setArchiveUntil(e.target.value);
+                  setArchiveDownloaded(false);
+                }}
+                className="w-full rounded-xl border px-4 py-3"
+              />
+            </div>
+
+            <div className="rounded-2xl bg-[#f7f2e8] p-4">
+              <p className="text-sm text-black/60">Bezpečné mazanie do</p>
+              <p className="text-xl font-black">{archiveDeleteUntil}</p>
+              <p className="mt-1 text-xs text-black/50">
+                Aktuálny mesiac od {currentMonth} je zamknutý.
+              </p>
+            </div>
+
+            <div className="rounded-2xl bg-[#f7f2e8] p-4">
+              <p className="text-sm text-black/60">Na archiváciu</p>
+              <p className="text-sm">
+                Tréningy: <b>{archiveTrainings.length}</b>
+              </p>
+              <p className="text-sm">
+                Prezenčka: <b>{archiveAttendance.length}</b>
+              </p>
+              <p className="text-sm">
+                Semináre/tábory: <b>{archiveEvents.length}</b>
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <button
+              onClick={exportArchive}
+              disabled={archiveWorking}
+              className="rounded-xl bg-black px-4 py-3 font-bold text-white disabled:opacity-60"
+            >
+              Stiahnuť archív
+            </button>
+
+            <button
+              onClick={deleteArchivedHistory}
+              disabled={!archiveDownloaded || archiveWorking}
+              className="rounded-xl bg-[#d71920] px-4 py-3 font-bold text-white disabled:opacity-40"
+            >
+              {archiveWorking
+                ? "Mažem..."
+                : archiveDownloaded
+                ? "Vymazať archivovanú históriu"
+                : "Najprv stiahni archív"}
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
         <h2 className="mb-4 text-2xl font-bold">Filter</h2>
@@ -495,7 +759,9 @@ export default function StatsPage() {
 
             <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
               <p className="text-black/60">Tréningy prítomný</p>
-              <h2 className="text-4xl font-black text-green-700">{presentCount}</h2>
+              <h2 className="text-4xl font-black text-green-700">
+                {presentCount}
+              </h2>
             </div>
 
             <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
@@ -525,7 +791,10 @@ export default function StatsPage() {
               ) : (
                 <div className="grid gap-3">
                   {topicStats.map(([topic, stat]) => (
-                    <div key={topic} className="rounded-2xl border border-black/10 p-4">
+                    <div
+                      key={topic}
+                      className="rounded-2xl border border-black/10 p-4"
+                    >
                       <p className="text-lg font-bold">{topic}</p>
                       <p className="text-green-700">Prítomný: {stat.present}</p>
                       <p className="text-red-700">Neprítomný: {stat.absent}</p>
@@ -558,7 +827,10 @@ export default function StatsPage() {
               ) : (
                 <div className="grid gap-3">
                   {eventTypeStats.map(([type, stat]) => (
-                    <div key={type} className="rounded-2xl border border-black/10 p-4">
+                    <div
+                      key={type}
+                      className="rounded-2xl border border-black/10 p-4"
+                    >
                       <p className="font-bold">{type}</p>
                       <p className="text-green-700">Prítomný: {stat.present}</p>
                       <p className="text-red-700">Neprítomný: {stat.absent}</p>
