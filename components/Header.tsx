@@ -3,10 +3,14 @@
 import { createClient } from "@/lib/supabase/browser";
 import { usePermissions } from "@/lib/usePermissions";
 import {
+  BarChart3,
   Building2,
+  CalendarCheck,
   Home,
   LogOut,
+  Mail,
   MoreHorizontal,
+  Tags,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -19,6 +23,7 @@ type MenuItem = {
   label: string;
   href: string;
   Icon: LucideIcon;
+  adminOnly?: boolean;
 };
 
 export default function Header({ email }: { email?: string }) {
@@ -37,7 +42,11 @@ export default function Header({ email }: { email?: string }) {
     { key: "dashboard", label: "Domov", href: "/dashboard", Icon: Home },
     { key: "dojo", label: "Dojo", href: "/dojos", Icon: Building2 },
     { key: "students", label: "Žiaci", href: "/students", Icon: Users },
-    { key: "trainers", label: "Tréneri", href: "/trainers", Icon: Users },
+    { key: "trainers", label: "Tréneri", href: "/trainers", Icon: Users, adminOnly: true },
+    { key: "topics", label: "Témy", href: "/topics", Icon: Tags },
+    { key: "trainings", label: "Tréningy", href: "/trainings", Icon: CalendarCheck },
+    { key: "stats", label: "Štatistiky", href: "/stats", Icon: BarChart3 },
+    { key: "emails", label: "Emaily", href: "/emails", Icon: Mail },
     { key: "more", label: "Viac", href: "/more", Icon: MoreHorizontal },
   ];
 
@@ -51,12 +60,12 @@ export default function Header({ email }: { email?: string }) {
     !mounted || loading
       ? [{ key: "more", label: "Viac", href: "/more", Icon: MoreHorizontal }]
       : isAdmin
-      ? allMenu
-      : allMenu.filter((item) => {
-          if (item.key === "trainers") return false;
-          if (item.key === "more") return true;
-          return visibleMenu.includes(item.key);
-        });
+        ? allMenu
+        : allMenu.filter((item) => {
+            if (item.adminOnly) return false;
+            if (item.key === "more") return true;
+            return visibleMenu.includes(item.key);
+          });
 
   const safeMenu =
     bottomMenu.length > 0
@@ -100,8 +109,10 @@ export default function Header({ email }: { email?: string }) {
 
       <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-black/10 bg-white/95 px-3 pb-safe pt-2 backdrop-blur">
         <div
-          className="mx-auto grid max-w-md gap-1"
-          style={{ gridTemplateColumns: `repeat(${safeMenu.length}, minmax(0, 1fr))` }}
+          className="mx-auto grid max-w-md gap-1 overflow-x-auto"
+          style={{
+            gridTemplateColumns: `repeat(${safeMenu.length}, minmax(72px, 1fr))`,
+          }}
         >
           {safeMenu.map(({ key, label, href, Icon }) => {
             const active =
@@ -118,7 +129,7 @@ export default function Header({ email }: { email?: string }) {
                 }`}
               >
                 <Icon size={20} />
-                <span className="mt-1">{label}</span>
+                <span className="mt-1 whitespace-nowrap">{label}</span>
               </Link>
             );
           })}
