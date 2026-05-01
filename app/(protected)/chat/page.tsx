@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/browser";
 import { usePermissions } from "@/lib/usePermissions";
-import { Send } from "lucide-react";
+import { MessageCircle, Send, Users } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 export default function ChatPage() {
@@ -37,8 +37,7 @@ export default function ChatPage() {
       .from("trainer_chat_messages")
       .select(`
         *,
-        trainers:trainer_id(full_name, email),
-        recipient:recipient_trainer_id(full_name, email)
+        trainers:trainer_id(full_name, email)
       `)
       .order("created_at", { ascending: true })
       .limit(200);
@@ -46,11 +45,7 @@ export default function ChatPage() {
     if (isAllChat) {
       query = query.eq("room", "all");
     } else {
-      query = query
-        .eq("room", "direct")
-        .or(
-          `and(trainer_id.eq.${permissions.id},recipient_trainer_id.eq.${selectedTrainerId}),and(trainer_id.eq.${selectedTrainerId},recipient_trainer_id.eq.${permissions.id})`
-        );
+      query = query.eq("room", "direct");
     }
 
     const { data, error } = await query;
@@ -61,7 +56,19 @@ export default function ChatPage() {
       return;
     }
 
-    setMessages(data || []);
+    const visibleMessages = isAllChat
+      ? data || []
+      : (data || []).filter((m: any) => {
+          const me = permissions.id;
+          const other = selectedTrainerId;
+
+          return (
+            (m.trainer_id === me && m.recipient_trainer_id === other) ||
+            (m.trainer_id === other && m.recipient_trainer_id === me)
+          );
+        });
+
+    setMessages(visibleMessages);
     setLoading(false);
   }
 
@@ -70,6 +77,7 @@ export default function ChatPage() {
   }, []);
 
   useEffect(() => {
+    setLoading(true);
     loadMessages();
 
     const supabase = createClient();
@@ -118,112 +126,157 @@ export default function ChatPage() {
   }, [trainers, selectedTrainerId]);
 
   return (
-    <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40 space-y-6">
-      <div className="rounded-3xl bg-[#111] p-6 text-white shadow-lg">
-        <p className="text-sm text-white/60">Interná komunikácia</p>
-        <h1 className="mt-1 text-3xl font-extrabold">Chat trénerov</h1>
-        <p className="mt-2 text-white/70">
-          Správy pre všetkých trénerov alebo súkromne vybranému trénerovi.
-        </p>
-      </div>
+    <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40">
+      <div className="mx-auto max-w-5xl space-y-5">
+        <div className="overflow-hidden rounded-[32px] bg-[#111] text-white shadow-[0_18px_50px_rgba(0,0,0,0.22)]">
+          <div className="p-6 md:p-8">
+            <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#d71920]">
+              <MessageCircle size={28} />
+            </div>
 
-      <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-black/10">
-        <label className="mb-2 block text-sm font-bold text-black/60">
-          Komu píšeš
-        </label>
+            <p className="text-sm font-bold uppercase tracking-[0.18em] text-white/45">
+              Interná komunikácia
+            </p>
 
-        <select
-          value={selectedTrainerId}
-          onChange={(e) => {
-            setSelectedTrainerId(e.target.value);
-            setLoading(true);
-          }}
-          className="w-full rounded-xl border px-4 py-3"
-        >
-          <option value="all">Všetci tréneri</option>
-          {trainers
-            .filter((t) => t.id !== permissions?.id)
-            .map((trainer) => (
-              <option key={trainer.id} value={trainer.id}>
-                {trainer.full_name || trainer.email}
-              </option>
-            ))}
-        </select>
-      </div>
+            <h1 className="mt-2 text-4xl font-black tracking-tight">
+              Chat trénerov
+            </h1>
 
-      <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-black/10">
-        <div className="mb-3 rounded-2xl bg-[#f7f2e8] px-4 py-3 text-sm font-bold">
-          {isAllChat
-            ? "Skupina: Všetci tréneri"
-            : `Súkromný chat: ${
-                selectedTrainer?.full_name || selectedTrainer?.email || "Tréner"
-              }`}
-        </div>
-
-        {loading ? (
-          <p className="p-4 text-center text-black/60">Načítavam správy...</p>
-        ) : messages.length === 0 ? (
-          <p className="p-4 text-center text-black/60">
-            Zatiaľ tu nie sú žiadne správy.
-          </p>
-        ) : (
-          <div className="max-h-[55vh] space-y-3 overflow-y-auto p-1">
-            {messages.map((m) => {
-              const mine = m.trainer_id === permissions?.id;
-
-              return (
-                <div
-                  key={m.id}
-                  className={`flex ${mine ? "justify-end" : "justify-start"}`}
-                >
-                  <div
-                    className={`max-w-[80%] rounded-3xl px-4 py-3 ${
-                      mine
-                        ? "bg-[#d71920] text-white"
-                        : "bg-[#f7f2e8] text-black"
-                    }`}
-                  >
-                    <p className="text-xs font-bold opacity-70">
-                      {m.trainers?.full_name || m.trainers?.email || "Tréner"}
-                    </p>
-
-                    <p className="mt-1 whitespace-pre-wrap text-sm">
-                      {m.message}
-                    </p>
-
-                    <p className="mt-2 text-[10px] opacity-60">
-                      {new Date(m.created_at).toLocaleString("sk-SK")}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
+            <p className="mt-3 max-w-2xl text-white/65">
+              Správy pre všetkých trénerov alebo súkromne vybranému trénerovi.
+            </p>
           </div>
-        )}
-      </div>
-
-      <form
-        onSubmit={sendMessage}
-        className="fixed bottom-24 left-0 right-0 z-40 mx-auto max-w-3xl px-5"
-      >
-        <div className="flex gap-2 rounded-3xl bg-white p-2 shadow-lg ring-1 ring-black/10">
-          <input
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            placeholder={
-              isAllChat ? "Správa pre všetkých..." : "Súkromná správa..."
-            }
-            className="min-w-0 flex-1 rounded-2xl px-4 py-3 outline-none"
-          />
-
-          <button
-            type="submit"
-            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#d71920] text-white active:scale-[0.96]"
-          >
-            <Send size={20} />
-          </button>
         </div>
-      </form>
+
+        <div className="rounded-[28px] bg-white p-4 shadow-sm ring-1 ring-black/10 md:p-5">
+          <label className="mb-2 block text-sm font-bold text-black/60">
+            Komu píšeš
+          </label>
+
+          <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+            <select
+              value={selectedTrainerId}
+              onChange={(e) => {
+                setSelectedTrainerId(e.target.value);
+                setLoading(true);
+              }}
+              className="w-full rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 py-4 font-bold outline-none"
+            >
+              <option value="all">Všetci tréneri</option>
+              {trainers
+                .filter((t) => t.id !== permissions?.id)
+                .map((trainer) => (
+                  <option key={trainer.id} value={trainer.id}>
+                    {trainer.full_name || trainer.email}
+                  </option>
+                ))}
+            </select>
+
+            <div className="flex items-center gap-2 rounded-2xl bg-black px-4 py-3 text-sm font-bold text-white">
+              <Users size={18} />
+              {isAllChat ? "Skupina" : "Súkromne"}
+            </div>
+          </div>
+        </div>
+
+        <div className="overflow-hidden rounded-[28px] bg-white shadow-sm ring-1 ring-black/10">
+          <div className="border-b border-black/10 bg-white px-5 py-4">
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-black/35">
+              Aktuálny chat
+            </p>
+
+            <h2 className="mt-1 text-xl font-black">
+              {isAllChat
+                ? "Všetci tréneri"
+                : selectedTrainer?.full_name ||
+                  selectedTrainer?.email ||
+                  "Vybraný tréner"}
+            </h2>
+          </div>
+
+          <div className="max-h-[58vh] min-h-[360px] space-y-3 overflow-y-auto bg-[#faf7ef] p-4 md:p-6">
+            {loading ? (
+              <div className="flex h-[300px] items-center justify-center">
+                <p className="rounded-2xl bg-white px-5 py-3 text-sm font-bold text-black/55 shadow-sm">
+                  Načítavam správy...
+                </p>
+              </div>
+            ) : messages.length === 0 ? (
+              <div className="flex h-[300px] items-center justify-center">
+                <div className="max-w-sm rounded-3xl bg-white p-6 text-center shadow-sm ring-1 ring-black/5">
+                  <MessageCircle className="mx-auto mb-3 text-[#d71920]" />
+                  <p className="font-black">Zatiaľ žiadne správy</p>
+                  <p className="mt-1 text-sm text-black/50">
+                    Napíš prvú správu do tohto chatu.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              messages.map((m) => {
+                const mine = m.trainer_id === permissions?.id;
+
+                return (
+                  <div
+                    key={m.id}
+                    className={`flex ${mine ? "justify-end" : "justify-start"}`}
+                  >
+                    <div
+                      className={`max-w-[82%] rounded-[26px] px-4 py-3 shadow-sm ${
+                        mine
+                          ? "rounded-br-md bg-[#d71920] text-white"
+                          : "rounded-bl-md bg-white text-black ring-1 ring-black/5"
+                      }`}
+                    >
+                      <p
+                        className={`text-[11px] font-black ${
+                          mine ? "text-white/70" : "text-black/45"
+                        }`}
+                      >
+                        {m.trainers?.full_name || m.trainers?.email || "Tréner"}
+                      </p>
+
+                      <p className="mt-1 whitespace-pre-wrap text-[15px] leading-relaxed">
+                        {m.message}
+                      </p>
+
+                      <p
+                        className={`mt-2 text-[10px] ${
+                          mine ? "text-white/55" : "text-black/35"
+                        }`}
+                      >
+                        {new Date(m.created_at).toLocaleString("sk-SK")}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        <form
+          onSubmit={sendMessage}
+          className="fixed bottom-24 left-0 right-0 z-40 mx-auto max-w-5xl px-5"
+        >
+          <div className="flex gap-2 rounded-[26px] bg-white p-2 shadow-[0_12px_35px_rgba(0,0,0,0.18)] ring-1 ring-black/10">
+            <input
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              placeholder={
+                isAllChat ? "Správa pre všetkých..." : "Súkromná správa..."
+              }
+              className="min-w-0 flex-1 rounded-2xl bg-[#f7f2e8] px-4 py-4 font-medium outline-none"
+            />
+
+            <button
+              type="submit"
+              className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#d71920] text-white shadow-[0_8px_18px_rgba(215,25,32,0.25)] active:scale-[0.96]"
+            >
+              <Send size={22} />
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
