@@ -62,12 +62,12 @@ export default function Header({ email }: { email?: string }) {
     !mounted || loading
       ? [{ key: "more", label: "Viac", href: "/more", Icon: MoreHorizontal }]
       : isAdmin
-        ? allMenu
-        : allMenu.filter((item) => {
-            if (item.adminOnly) return false;
-            if (item.key === "more") return true;
-            return visibleMenu.includes(item.key);
-          });
+      ? allMenu
+      : allMenu.filter((item) => {
+          if (item.adminOnly) return false;
+          if (item.key === "more") return true;
+          return visibleMenu.includes(item.key);
+        });
 
   const safeMenu =
     menu.length > 0
@@ -110,11 +110,11 @@ export default function Header({ email }: { email?: string }) {
       </header>
 
       <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-black/10 bg-white/95 px-3 pb-safe pt-2 backdrop-blur">
-        <div className="mx-auto max-w-3xl overflow-x-auto">
+        <div className="mx-auto max-w-7xl overflow-x-auto">
           <div
             className="grid min-w-max gap-1"
             style={{
-              gridTemplateColumns: `repeat(${safeMenu.length}, minmax(78px, 1fr))`,
+              gridTemplateColumns: `repeat(${safeMenu.length}, minmax(92px, 1fr))`,
             }}
           >
             {safeMenu.map(({ key, label, href, Icon }) => {
