@@ -2,12 +2,12 @@
 
 import { createClient } from "@/lib/supabase/browser";
 import { usePermissions } from "@/lib/usePermissions";
-import { Building2, Plus } from "lucide-react";
+import { Building2, Plus, UserRound } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 
 export default function DojosPage() {
-  const { permissions, loading: permissionsLoading } = usePermissions();
+  const { permissions, dojoIds, loading: permissionsLoading } = usePermissions();
 
   const [dojos, setDojos] = useState<any[]>([]);
   const [name, setName] = useState("");
@@ -20,63 +20,50 @@ export default function DojosPage() {
   async function load() {
     if (permissionsLoading) return;
 
-    if (!permissions?.id) {
-      setDojos([]);
-      setLoading(false);
-      return;
-    }
-
     setLoading(true);
 
     const supabase = createClient();
 
-    if (isAdmin) {
-      const { data, error } = await supabase
-        .from("dojos")
-        .select("*")
-        .order("name");
-
-      if (error) alert(error.message);
-
-      setDojos(data || []);
-      setLoading(false);
-      return;
-    }
-
-    const { data: links, error: linksError } = await supabase
-      .from("trainer_dojos")
-      .select("dojo_id")
-      .eq("trainer_id", permissions.id);
-
-    if (linksError) {
-      alert(linksError.message);
-      setLoading(false);
-      return;
-    }
-
-    const dojoIds = (links || []).map((link: any) => link.dojo_id);
-
-    if (dojoIds.length === 0) {
-      setDojos([]);
-      setLoading(false);
-      return;
-    }
-
-    const { data, error } = await supabase
+    let query = supabase
       .from("dojos")
-      .select("*")
-      .in("id", dojoIds)
+      .select(`
+        *,
+        trainer_dojos (
+          trainers (
+            id,
+            full_name,
+            email
+          )
+        )
+      `)
       .order("name");
 
-    if (error) alert(error.message);
+    if (!isAdmin) {
+      if (!dojoIds || dojoIds.length === 0) {
+        setDojos([]);
+        setLoading(false);
+        return;
+      }
 
-    setDojos(data || []);
+      query = query.in("id", dojoIds);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error("Dojos load error:", error);
+      alert(error.message);
+      setDojos([]);
+    } else {
+      setDojos(data || []);
+    }
+
     setLoading(false);
   }
 
   useEffect(() => {
     load();
-  }, [permissionsLoading, permissions?.id, isAdmin]);
+  }, [permissionsLoading, permissions?.id, isAdmin, dojoIds]);
 
   async function add(e: FormEvent) {
     e.preventDefault();
@@ -170,19 +157,56 @@ export default function DojosPage() {
         </div>
       )}
 
-      <div className="grid gap-4">
-        {dojos.map((dojo) => (
-          <Link
-            key={dojo.id}
-            href={`/dojos/${dojo.id}`}
-            className="rounded-3xl bg-white p-5 shadow-[0_8px_20px_rgba(0,0,0,0.08)] border border-black/5 active:scale-[0.98]"
-          >
-            <Building2 className="mb-3 text-[#d71920]" />
-            <h2 className="text-xl font-bold">{dojo.name}</h2>
-            <p className="text-black/60">{dojo.address}</p>
-          </Link>
-        ))}
-      </div>
+      {!loading && (
+        <div className="grid gap-4">
+          {dojos.map((dojo) => {
+            const assignedTrainers =
+              dojo.trainer_dojos
+                ?.map((link: any) => link.trainers)
+                .filter(Boolean) || [];
+
+            return (
+              <Link
+                key={dojo.id}
+                href={`/dojos/${dojo.id}`}
+                className="rounded-3xl bg-white p-5 shadow-[0_8px_20px_rgba(0,0,0,0.08)] border border-black/5 active:scale-[0.98]"
+              >
+                <Building2 className="mb-3 text-[#d71920]" />
+
+                <h2 className="text-xl font-bold">{dojo.name}</h2>
+
+                {dojo.address && (
+                  <p className="text-black/60">{dojo.address}</p>
+                )}
+
+                <div className="mt-4 rounded-2xl bg-[#f7f2e8] p-4">
+                  <p className="mb-3 flex items-center gap-2 text-sm font-bold text-black/70">
+                    <UserRound size={16} />
+                    Priradení tréneri
+                  </p>
+
+                  {assignedTrainers.length === 0 ? (
+                    <p className="text-sm text-black/45">
+                      Zatiaľ bez priradeného trénera.
+                    </p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {assignedTrainers.map((trainer: any) => (
+                        <span
+                          key={trainer.id}
+                          className="rounded-full bg-white px-3 py-2 text-sm font-bold shadow-sm"
+                        >
+                          {trainer.full_name || trainer.email}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      )}
 
       {isAdmin && (
         <button
