@@ -1,626 +1,620 @@
 "use client";
 
-import { usePermissions } from "@/lib/usePermissions";
 import { createClient } from "@/lib/supabase/browser";
+import { usePermissions } from "@/lib/usePermissions";
 import {
-  ArrowLeft,
   CalendarDays,
-  Check,
-  CheckCircle2,
-  ClipboardCheck,
-  GraduationCap,
-  MapPin,
+  ChevronRight,
+  ClipboardList,
+  Filter,
   Plus,
   Search,
-  ShieldAlert,
+  Sparkles,
   Trash2,
-  UserPlus,
+  Trophy,
+  UserRound,
   Users,
-  X,
-  XCircle,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
-type Status = "present" | "absent" | null;
-
-type PageParams = {
-  id?: string;
+const eventTypeLabels: Record<string, string> = {
+  kids_seminar: "Detský seminár",
+  older_seminar: "Seminár pre starších",
+  day_camp: "Denný tábor",
+  sleepover_camp_1: "Prespávací tábor 1",
+  sleepover_camp_2: "Prespávací tábor 2",
+  training: "Tréning",
 };
 
-function statusLabel(status: Status) {
-  if (status === "present") return "Prítomný";
-  if (status === "absent") return "Neprítomný";
-  return "Neoznačený";
+const eventTypeStyles: Record<string, string> = {
+  kids_seminar: "bg-blue-50 text-blue-800 ring-blue-100",
+  older_seminar: "bg-purple-50 text-purple-800 ring-purple-100",
+  day_camp: "bg-amber-50 text-amber-900 ring-amber-100",
+  sleepover_camp_1: "bg-emerald-50 text-emerald-800 ring-emerald-100",
+  sleepover_camp_2: "bg-green-50 text-green-800 ring-green-100",
+  training: "bg-red-50 text-red-800 ring-red-100",
+};
+
+function formatDate(date?: string | null) {
+  if (!date) return "Bez dátumu";
+
+  const value = new Date(`${date}T00:00:00`);
+  if (Number.isNaN(value.getTime())) return date;
+
+  return value.toLocaleDateString("sk-SK", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
 }
 
-function statusButtonClass(status: Status) {
-  if (status === "present") return "bg-green-600 text-white shadow-[0_8px_18px_rgba(22,163,74,0.25)]";
-  if (status === "absent") return "bg-red-600 text-white shadow-[0_8px_18px_rgba(220,38,38,0.25)]";
-  return "bg-black/10 text-black";
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
 }
 
-function statusPillClass(status: Status) {
-  if (status === "present") return "bg-green-100 text-green-800";
-  if (status === "absent") return "bg-red-100 text-red-800";
-  return "bg-black/10 text-black/60";
-}
+export default function EventsPage() {
+  const { permissions, dojoIds } = usePermissions();
 
-export default function EventDetailPage({ params }: { params: PageParams }) {
-  const eventId = params?.id;
-  const { permissions } = usePermissions();
+  const [events, setEvents] = useState<any[]>([]);
+  const [dojos, setDojos] = useState<any[]>([]);
+  const [topics, setTopics] = useState<any[]>([]);
+  const [trainers, setTrainers] = useState<any[]>([]);
 
-  const [event, setEvent] = useState<any>(null);
-  const [students, setStudents] = useState<any[]>([]);
-  const [attendance, setAttendance] = useState<any[]>([]);
-  const [external, setExternal] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [showForm, setShowForm] = useState(false);
 
-  const [selectedStudentId, setSelectedStudentId] = useState("");
-  const [extFirst, setExtFirst] = useState("");
-  const [extLast, setExtLast] = useState("");
   const [search, setSearch] = useState("");
-  const [saving, setSaving] = useState(false);
+  const [filterDojoId, setFilterDojoId] = useState("");
+  const [filterType, setFilterType] = useState("");
+  const [dateMode, setDateMode] = useState<"upcoming" | "all" | "past">("upcoming");
 
-  const canWriteAttendance =
-    !!permissions?.can_attendance || !!permissions?.can_manage_trainers;
-
-  const canDelete =
-    !!permissions?.can_delete_students || !!permissions?.can_manage_trainers;
+  const isAdmin = !!permissions?.can_manage_trainers;
+  const canCreateEvents = !!permissions?.can_create_trainings || isAdmin;
 
   async function loadData() {
-    if (!eventId || eventId === "undefined") {
-      setLoading(false);
-      setErrorMessage("Chýba ID akcie. Otvor akciu zo zoznamu cez správny odkaz.");
-      return;
-    }
+    if (!permissions) return;
 
     setLoading(true);
-    setErrorMessage("");
 
     const supabase = createClient();
 
-    const [eventRes, studentsRes, attendanceRes, externalRes] = await Promise.all([
-      supabase
-        .from("events")
-        .select("*, dojos(name), trainers(full_name), training_topics(name)")
-        .eq("id", eventId)
-        .maybeSingle(),
-      supabase
-        .from("students")
-        .select("*, dojos(name)")
-        .eq("active", true)
-        .order("last_name"),
-      supabase
-        .from("event_attendance")
-        .select("*, students(first_name, last_name, technical_grade, dojos(name))")
-        .eq("event_id", eventId),
-      supabase
-        .from("event_external_participants")
-        .select("*")
-        .eq("event_id", eventId)
-        .order("created_at"),
-    ]);
+    let eventsQuery = supabase
+      .from("events")
+      .select("*, dojos(name), trainers(full_name), training_topics(name)")
+      .order("start_date", { ascending: false });
 
-    if (eventRes.error) {
-      setErrorMessage(eventRes.error.message);
-      setLoading(false);
-      return;
+    let dojosQuery = supabase.from("dojos").select("*").order("name");
+
+    if (!isAdmin) {
+      if (!dojoIds || dojoIds.length === 0) {
+        setEvents([]);
+        setDojos([]);
+        setTopics([]);
+        setTrainers([]);
+        setLoading(false);
+        return;
+      }
+
+      eventsQuery = eventsQuery.in("dojo_id", dojoIds);
+      dojosQuery = dojosQuery.in("id", dojoIds);
     }
 
-    if (studentsRes.error) console.error(studentsRes.error.message);
-    if (attendanceRes.error) console.error(attendanceRes.error.message);
-    if (externalRes.error) console.error(externalRes.error.message);
+    const [eventsRes, dojosRes, topicsRes, trainersRes] = await Promise.all([
+      eventsQuery,
+      dojosQuery,
+      supabase.from("training_topics").select("*").order("name"),
+      supabase.from("trainers").select("*").order("full_name"),
+    ]);
 
-    setEvent(eventRes.data);
-    setStudents(studentsRes.data || []);
-    setAttendance(attendanceRes.data || []);
-    setExternal(externalRes.data || []);
+    if (eventsRes.error) alert(eventsRes.error.message);
+    if (dojosRes.error) alert(dojosRes.error.message);
+    if (topicsRes.error) console.error(topicsRes.error.message);
+    if (trainersRes.error) console.error(trainersRes.error.message);
+
+    setEvents(eventsRes.data || []);
+    setDojos(dojosRes.data || []);
+    setTopics(topicsRes.data || []);
+    setTrainers(trainersRes.data || []);
     setLoading(false);
   }
 
   useEffect(() => {
     loadData();
-  }, [eventId]);
+  }, [permissions, dojoIds]);
 
-  const alreadyAddedIds = useMemo(
-    () => attendance.map((a) => a.student_id).filter(Boolean),
-    [attendance]
-  );
+  async function addEvent(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
 
-  const availableStudents = useMemo(() => {
-    const q = search.toLowerCase().trim();
-
-    return students
-      .filter((s) => !alreadyAddedIds.includes(s.id))
-      .filter((s) => {
-        if (!q) return true;
-
-        return [s.first_name, s.last_name, s.technical_grade, s.dojos?.name]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase()
-          .includes(q);
-      });
-  }, [students, alreadyAddedIds, search]);
-
-  const stats = useMemo(() => {
-    const registeredPresent = attendance.filter((a) => a.status === "present").length;
-    const registeredAbsent = attendance.filter((a) => a.status === "absent").length;
-    const externalPresent = external.filter((a) => a.status === "present").length;
-    const externalAbsent = external.filter((a) => a.status === "absent").length;
-
-    return {
-      total: attendance.length + external.length,
-      present: registeredPresent + externalPresent,
-      absent: registeredAbsent + externalAbsent,
-      registered: attendance.length,
-      external: external.length,
-    };
-  }, [attendance, external]);
-
-  async function addStudent() {
-    if (!eventId || eventId === "undefined") return alert("Chýba ID akcie.");
-    if (!canWriteAttendance) return alert("Nemáš oprávnenie zapisovať prezenčku.");
-    if (!selectedStudentId) return alert("Vyber cvičiaceho.");
-
-    setSaving(true);
-    const supabase = createClient();
-
-    const { error } = await supabase.from("event_attendance").upsert(
-      {
-        event_id: eventId,
-        student_id: selectedStudentId,
-        status: "present",
-      },
-      { onConflict: "event_id,student_id" }
-    );
-
-    setSaving(false);
-
-    if (error) return alert(error.message);
-
-    setSelectedStudentId("");
-    loadData();
-  }
-
-  async function cycleStatus(row: any) {
-    if (!canWriteAttendance) return alert("Nemáš oprávnenie meniť prezenčku.");
-
-    const supabase = createClient();
-    const current: Status = row.status || null;
-
-    if (current === "present") {
-      const { error } = await supabase
-        .from("event_attendance")
-        .update({ status: "absent" })
-        .eq("id", row.id);
-
-      if (error) return alert(error.message);
+    if (!canCreateEvents) {
+      alert("Nemáš oprávnenie vytvárať akcie.");
+      return;
     }
 
-    if (current === "absent") {
-      const { error } = await supabase.from("event_attendance").delete().eq("id", row.id);
-      if (error) return alert(error.message);
+    if (creating) return;
+
+    const formElement = e.currentTarget;
+    const form = new FormData(formElement);
+
+    const name = String(form.get("name") || "").trim();
+    const eventType = String(form.get("type") || "kids_seminar").trim();
+    const startDate = String(form.get("start_date") || "").trim();
+    const endDate = String(form.get("end_date") || "").trim();
+    const dojoId = String(form.get("dojo_id") || "").trim();
+    const topicId = String(form.get("topic_id") || "").trim();
+    const trainerId = String(form.get("trainer_id") || "").trim();
+
+    if (!name) return alert("Zadaj názov akcie.");
+    if (!startDate) return alert("Vyber dátum začiatku.");
+    if (!dojoId) return alert("Vyber dojo.");
+
+    if (endDate && endDate < startDate) {
+      alert("Dátum do nemôže byť pred dátumom od.");
+      return;
     }
 
-    if (!current) {
-      const { error } = await supabase
-        .from("event_attendance")
-        .update({ status: "present" })
-        .eq("id", row.id);
-
-      if (error) return alert(error.message);
+    if (!isAdmin && !dojoIds.includes(dojoId)) {
+      alert("Nemáš oprávnenie vytvárať akciu pre toto dojo.");
+      return;
     }
 
-    loadData();
-  }
-
-  async function removeStudent(rowId: string) {
-    if (!canDelete) return alert("Nemáš oprávnenie odoberať cvičiacich.");
-    if (!confirm("Odstrániť cvičiaceho z prezenčky?")) return;
+    setCreating(true);
 
     const supabase = createClient();
 
-    const { error } = await supabase.from("event_attendance").delete().eq("id", rowId);
-
-    if (error) return alert(error.message);
-
-    loadData();
-  }
-
-  async function addExternal() {
-    if (!eventId || eventId === "undefined") return alert("Chýba ID akcie.");
-    if (!canWriteAttendance) return alert("Nemáš oprávnenie zapisovať prezenčku.");
-    if (!extFirst.trim() || !extLast.trim()) return alert("Vyplň meno a priezvisko.");
-
-    setSaving(true);
-    const supabase = createClient();
-
-    const { error } = await supabase.from("event_external_participants").insert({
-      event_id: eventId,
-      first_name: extFirst.trim(),
-      last_name: extLast.trim(),
-      status: "present",
+    const { error } = await supabase.from("events").insert({
+      name,
+      event_type: eventType,
+      start_date: startDate,
+      end_date: endDate || null,
+      dojo_id: dojoId,
+      topic_id: topicId || null,
+      trainer_id: trainerId || null,
     });
 
-    setSaving(false);
+    setCreating(false);
 
     if (error) return alert(error.message);
 
-    setExtFirst("");
-    setExtLast("");
-    loadData();
+    formElement.reset();
+    setShowForm(false);
+    await loadData();
   }
 
-  async function toggleExternal(row: any) {
-    if (!canWriteAttendance) return alert("Nemáš oprávnenie meniť prezenčku.");
+  async function deleteEvent(id: string) {
+    if (!isAdmin) {
+      alert("Nemáš oprávnenie mazať akcie.");
+      return;
+    }
 
-    const supabase = createClient();
-    const newStatus = row.status === "present" ? "absent" : "present";
-
-    const { error } = await supabase
-      .from("event_external_participants")
-      .update({ status: newStatus })
-      .eq("id", row.id);
-
-    if (error) return alert(error.message);
-
-    loadData();
-  }
-
-  async function deleteExternal(id: string) {
-    if (!canDelete) return alert("Nemáš oprávnenie mazať účastníkov.");
-    if (!confirm("Vymazať externého účastníka?")) return;
+    if (!id) return alert("Chýba ID akcie.");
+    if (!confirm("Vymazať akciu? Vymaže sa aj jej prezenčka.")) return;
 
     const supabase = createClient();
 
-    const { error } = await supabase
+    const { error: attendanceError } = await supabase
+      .from("event_attendance")
+      .delete()
+      .eq("event_id", id);
+
+    if (attendanceError) return alert(attendanceError.message);
+
+    const { error: externalError } = await supabase
       .from("event_external_participants")
       .delete()
-      .eq("id", id);
+      .eq("event_id", id);
+
+    if (externalError) console.error(externalError.message);
+
+    const { error } = await supabase.from("events").delete().eq("id", id);
 
     if (error) return alert(error.message);
 
-    loadData();
+    await loadData();
   }
+
+  const filteredEvents = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    const today = todayIso();
+
+    return events.filter((event) => {
+      if (filterDojoId && event.dojo_id !== filterDojoId) return false;
+      if (filterType && event.event_type !== filterType) return false;
+
+      const eventEnd = event.end_date || event.start_date;
+
+      if (dateMode === "upcoming" && eventEnd < today) return false;
+      if (dateMode === "past" && eventEnd >= today) return false;
+
+      if (!q) return true;
+
+      const text = [
+        event.name,
+        event.start_date,
+        event.end_date,
+        event.dojos?.name,
+        event.trainers?.full_name,
+        event.training_topics?.name,
+        eventTypeLabels[event.event_type] || event.event_type,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return text.includes(q);
+    });
+  }, [events, search, filterDojoId, filterType, dateMode]);
+
+  const stats = useMemo(() => {
+    const today = todayIso();
+
+    return {
+      total: events.length,
+      upcoming: events.filter((event) => (event.end_date || event.start_date) >= today)
+        .length,
+      past: events.filter((event) => (event.end_date || event.start_date) < today)
+        .length,
+      dojos: new Set(events.map((event) => event.dojo_id).filter(Boolean)).size,
+    };
+  }, [events]);
 
   const inputClass =
-    "h-[54px] w-full min-w-0 rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 text-[16px] font-bold outline-none focus:border-[#d71920] focus:bg-white";
+    "h-[56px] w-full min-w-0 rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 text-[16px] font-bold outline-none transition focus:border-[#d71920] focus:bg-white";
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40">
-        <div className="rounded-3xl bg-white p-6 text-center font-bold text-black/55 shadow-sm">
-          Načítavam akciu...
-        </div>
-      </div>
-    );
-  }
-
-  if (errorMessage || !event) {
-    return (
-      <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40 space-y-4">
-        <div className="rounded-[30px] bg-white p-6 text-center shadow-sm ring-1 ring-black/10">
-          <ShieldAlert className="mx-auto mb-3 text-[#d71920]" size={34} />
-          <h1 className="text-2xl font-black">Akcia sa nenašla</h1>
-          <p className="mt-2 text-sm text-black/55">
-            {errorMessage || "Skontroluj, či bol otvorený správny odkaz na akciu."}
-          </p>
-        </div>
-
-        <Link
-          href="/events"
-          className="inline-flex h-[56px] w-full items-center justify-center gap-2 rounded-2xl bg-[#111] px-4 font-black text-white active:scale-[0.98]"
-        >
-          <ArrowLeft size={18} />
-          Späť na akcie
-        </Link>
-      </div>
-    );
-  }
+  const labelClass = "mb-2 block text-sm font-black text-black/55";
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-[#f7f2e8] px-4 py-6 pb-40 sm:px-5 space-y-6">
-      <div className="overflow-hidden rounded-[32px] bg-[#111] text-white shadow-[0_18px_45px_rgba(0,0,0,0.25)]">
-        <div className="p-6">
-          <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#d71920]">
-            <ClipboardCheck size={28} />
-          </div>
-
-          <p className="text-sm font-bold uppercase tracking-[0.18em] text-white/45">
-            Prezenčka akcie
-          </p>
-
-          <h1 className="mt-2 break-words text-4xl font-black tracking-tight">
-            {event.name}
-          </h1>
-
-          <div className="mt-4 grid gap-2 text-sm text-white/70">
-            <p className="flex flex-wrap items-center gap-2">
-              <CalendarDays size={16} />
-              {event.start_date}
-              {event.end_date ? ` – ${event.end_date}` : ""}
-            </p>
-
-            <p className="flex flex-wrap items-center gap-2">
-              <MapPin size={16} />
-              {event.dojos?.name || "Bez dojo"}
-            </p>
-
-            <p className="flex flex-wrap items-center gap-2">
-              <GraduationCap size={16} />
-              Tréner: {event.trainers?.full_name || "-"} · Téma: {event.training_topics?.name || "Bez témy"}
-            </p>
-          </div>
-
-          <div className="mt-6 grid gap-3 md:grid-cols-4">
-            <div className="rounded-2xl bg-white/10 p-4">
-              <p className="text-sm text-white/50">Spolu</p>
-              <p className="text-3xl font-black">{stats.total}</p>
+    <div className="min-h-screen overflow-x-hidden bg-[#f7f2e8] px-4 py-6 pb-40 sm:px-5">
+      <div className="mx-auto max-w-6xl space-y-6">
+        <div className="overflow-hidden rounded-[32px] bg-[#111] text-white shadow-[0_18px_45px_rgba(0,0,0,0.25)]">
+          <div className="p-6">
+            <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#d71920]">
+              <Trophy size={28} />
             </div>
 
-            <div className="rounded-2xl bg-white/10 p-4">
-              <p className="text-sm text-white/50">Prítomní</p>
-              <p className="text-3xl font-black">{stats.present}</p>
-            </div>
+            <p className="text-sm font-bold uppercase tracking-[0.18em] text-white/45">
+              DOKAN akcie
+            </p>
 
-            <div className="rounded-2xl bg-white/10 p-4">
-              <p className="text-sm text-white/50">Neprítomní</p>
-              <p className="text-3xl font-black">{stats.absent}</p>
-            </div>
+            <h1 className="mt-2 text-4xl font-black tracking-tight">
+              Semináre a akcie
+            </h1>
 
-            <div className="rounded-2xl bg-white/10 p-4">
-              <p className="text-sm text-white/50">Externí</p>
-              <p className="text-3xl font-black">{stats.external}</p>
+            <p className="mt-3 max-w-2xl text-white/65">
+              Moderný prehľad seminárov, táborov, tréningov a prezenčky podľa dojo.
+              {!isAdmin && " Zobrazuješ iba akcie pre svoje priradené dojo."}
+            </p>
+
+            <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-2xl bg-white/10 p-4">
+                <p className="text-sm text-white/50">Všetky akcie</p>
+                <p className="text-3xl font-black">{stats.total}</p>
+              </div>
+
+              <div className="rounded-2xl bg-white/10 p-4">
+                <p className="text-sm text-white/50">Nadchádzajúce</p>
+                <p className="text-3xl font-black">{stats.upcoming}</p>
+              </div>
+
+              <div className="rounded-2xl bg-white/10 p-4">
+                <p className="text-sm text-white/50">Ukončené</p>
+                <p className="text-3xl font-black">{stats.past}</p>
+              </div>
+
+              <div className="rounded-2xl bg-white/10 p-4">
+                <p className="text-sm text-white/50">Dojo v akciách</p>
+                <p className="text-3xl font-black">{stats.dojos}</p>
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      {canWriteAttendance && (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <div className="overflow-hidden rounded-[30px] bg-white p-5 shadow-sm ring-1 ring-black/10">
-            <div className="mb-4 flex items-start gap-3">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#d71920] text-white">
-                <UserPlus />
+        {canCreateEvents && (
+          <div className="overflow-hidden rounded-[30px] bg-white p-4 shadow-sm ring-1 ring-black/10 sm:p-5">
+            <button
+              type="button"
+              onClick={() => setShowForm((value) => !value)}
+              className="flex w-full items-center justify-between gap-4 text-left active:scale-[0.99]"
+            >
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#d71920] text-white">
+                  <Plus />
+                </div>
+
+                <div className="min-w-0">
+                  <p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">
+                    Nová akcia
+                  </p>
+                  <h2 className="text-2xl font-black">Vytvoriť akciu</h2>
+                </div>
               </div>
 
-              <div className="min-w-0">
-                <p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">
-                  Registrovaný cvičiaci
-                </p>
-                <h2 className="text-2xl font-black">Pridať žiaka</h2>
-              </div>
+              <span className="shrink-0 rounded-2xl bg-[#111] px-4 py-3 text-sm font-black text-white">
+                {showForm ? "Zavrieť" : "Otvoriť"}
+              </span>
+            </button>
+
+            {showForm && (
+              <form onSubmit={addEvent} className="mt-5 grid gap-4">
+                <div>
+                  <label className={labelClass}>Názov akcie</label>
+                  <input
+                    name="name"
+                    placeholder="Napr. Detský seminár, tábor, skúšky..."
+                    className={inputClass}
+                    required
+                  />
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div>
+                    <label className={labelClass}>Typ akcie</label>
+                    <select name="type" className={inputClass}>
+                      <option value="kids_seminar">Detský seminár</option>
+                      <option value="older_seminar">Seminár pre starších</option>
+                      <option value="day_camp">Denný tábor</option>
+                      <option value="sleepover_camp_1">Prespávací tábor 1</option>
+                      <option value="sleepover_camp_2">Prespávací tábor 2</option>
+                      <option value="training">Tréning</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>Dátum od</label>
+                    <input type="date" name="start_date" className={inputClass} required />
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>Dátum do</label>
+                    <input type="date" name="end_date" className={inputClass} />
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div>
+                    <label className={labelClass}>Dojo</label>
+                    <select name="dojo_id" className={inputClass} required>
+                      <option value="">Vyber dojo</option>
+                      {dojos.map((dojo) => (
+                        <option key={dojo.id} value={dojo.id}>
+                          {dojo.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>Téma</label>
+                    <select name="topic_id" className={inputClass}>
+                      <option value="">Bez témy</option>
+                      {topics.map((topic) => (
+                        <option key={topic.id} value={topic.id}>
+                          {topic.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>Tréner</label>
+                    <select name="trainer_id" className={inputClass}>
+                      <option value="">Bez trénera</option>
+                      {trainers.map((trainer) => (
+                        <option key={trainer.id} value={trainer.id}>
+                          {trainer.full_name || trainer.email}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <button
+                  disabled={creating}
+                  className="inline-flex h-[58px] w-full items-center justify-center gap-2 rounded-2xl bg-[#d71920] px-4 font-black text-white shadow-[0_8px_18px_rgba(215,25,32,0.25)] active:scale-[0.98] disabled:opacity-60"
+                >
+                  <Sparkles size={20} />
+                  {creating ? "Vytváram..." : "Vytvoriť akciu"}
+                </button>
+              </form>
+            )}
+          </div>
+        )}
+
+        <div className="overflow-hidden rounded-[30px] bg-white p-4 shadow-sm ring-1 ring-black/10 sm:p-5">
+          <div className="mb-4 flex items-center gap-3">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#f7f2e8] text-[#d71920]">
+              <Filter />
             </div>
 
-            <div className="space-y-3">
-              <div className="relative">
-                <Search
-                  size={18}
-                  className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-black/35"
-                />
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Hľadať meno, stupeň alebo dojo..."
-                  className={`${inputClass} pl-11`}
-                />
-              </div>
-
-              <select
-                value={selectedStudentId}
-                onChange={(e) => setSelectedStudentId(e.target.value)}
-                className={inputClass}
-              >
-                <option value="">Vyber cvičiaceho</option>
-                {availableStudents.map((student) => (
-                  <option key={student.id} value={student.id}>
-                    {student.last_name} {student.first_name} — {student.dojos?.name}
-                  </option>
-                ))}
-              </select>
-
-              <button
-                type="button"
-                onClick={addStudent}
-                disabled={saving || !selectedStudentId}
-                className="inline-flex h-[56px] w-full items-center justify-center gap-2 rounded-2xl bg-[#d71920] px-4 font-black text-white shadow-[0_8px_18px_rgba(215,25,32,0.25)] active:scale-[0.98] disabled:opacity-50"
-              >
-                <Plus size={20} />
-                Pridať do prezenčky
-              </button>
+            <div>
+              <p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">
+                Prehľad
+              </p>
+              <h2 className="text-2xl font-black">Filter akcií</h2>
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-[30px] bg-white p-5 shadow-sm ring-1 ring-black/10">
-            <div className="mb-4 flex items-start gap-3">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#111] text-white">
-                <Users />
-              </div>
-
-              <div className="min-w-0">
-                <p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">
-                  Hosť / externý
-                </p>
-                <h2 className="text-2xl font-black">Externý účastník</h2>
-              </div>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <input
-                placeholder="Meno"
-                value={extFirst}
-                onChange={(e) => setExtFirst(e.target.value)}
-                className={inputClass}
+          <div className="grid gap-3 lg:grid-cols-4">
+            <div className="relative lg:col-span-2">
+              <Search
+                size={18}
+                className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-black/35"
               />
-
               <input
-                placeholder="Priezvisko"
-                value={extLast}
-                onChange={(e) => setExtLast(e.target.value)}
-                className={inputClass}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Hľadaj názov, dojo, trénera alebo tému..."
+                className={`${inputClass} pl-11`}
               />
             </div>
+
+            <select
+              value={filterDojoId}
+              onChange={(e) => setFilterDojoId(e.target.value)}
+              className={inputClass}
+            >
+              <option value="">Všetky dojo</option>
+              {dojos.map((dojo) => (
+                <option key={dojo.id} value={dojo.id}>
+                  {dojo.name}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
+              className={inputClass}
+            >
+              <option value="">Všetky typy</option>
+              {Object.entries(eventTypeLabels).map(([key, label]) => (
+                <option key={key} value={key}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="mt-4 grid grid-cols-3 gap-2 rounded-3xl bg-[#f7f2e8] p-2">
+            <button
+              type="button"
+              onClick={() => setDateMode("upcoming")}
+              className={`rounded-2xl px-3 py-3 text-sm font-black active:scale-[0.98] ${
+                dateMode === "upcoming" ? "bg-[#111] text-white" : "bg-white text-black"
+              }`}
+            >
+              Budúce
+            </button>
 
             <button
               type="button"
-              onClick={addExternal}
-              disabled={saving || !extFirst.trim() || !extLast.trim()}
-              className="mt-3 inline-flex h-[56px] w-full items-center justify-center gap-2 rounded-2xl bg-[#111] px-4 font-black text-white active:scale-[0.98] disabled:opacity-50"
+              onClick={() => setDateMode("all")}
+              className={`rounded-2xl px-3 py-3 text-sm font-black active:scale-[0.98] ${
+                dateMode === "all" ? "bg-[#111] text-white" : "bg-white text-black"
+              }`}
             >
-              <Plus size={20} />
-              Pridať externého
+              Všetky
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setDateMode("past")}
+              className={`rounded-2xl px-3 py-3 text-sm font-black active:scale-[0.98] ${
+                dateMode === "past" ? "bg-[#111] text-white" : "bg-white text-black"
+              }`}
+            >
+              Staré
             </button>
           </div>
         </div>
-      )}
 
-      <div className="overflow-hidden rounded-[30px] bg-white p-5 shadow-sm ring-1 ring-black/10">
-        <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">
-              Prezenčka
-            </p>
-            <h2 className="text-2xl font-black">Registrovaní účastníci</h2>
+        <div className="overflow-hidden rounded-[30px] bg-white p-4 shadow-sm ring-1 ring-black/10 sm:p-5">
+          <div className="mb-5 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">
+                Zoznam
+              </p>
+              <h2 className="text-2xl font-black">Akcie</h2>
+            </div>
+
+            <span className="rounded-2xl bg-[#f7f2e8] px-4 py-2 text-sm font-black text-black/60">
+              {filteredEvents.length}
+            </span>
           </div>
 
-          <span className="w-fit rounded-full bg-[#f7f2e8] px-4 py-2 text-sm font-black text-black/60">
-            {attendance.length} záznamov
-          </span>
+          {loading ? (
+            <div className="rounded-3xl bg-[#f7f2e8] p-6 text-center font-bold text-black/55">
+              Načítavam akcie...
+            </div>
+          ) : filteredEvents.length === 0 ? (
+            <div className="rounded-3xl bg-[#f7f2e8] p-6 text-center text-black/55">
+              Žiadne akcie pre aktuálny filter.
+            </div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
+              {filteredEvents.map((event) => {
+                const typeLabel =
+                  eventTypeLabels[event.event_type] || event.event_type || "Akcia";
+
+                const typeStyle =
+                  eventTypeStyles[event.event_type] ||
+                  "bg-black/5 text-black/70 ring-black/10";
+
+                return (
+                  <div
+                    key={event.id}
+                    className="min-w-0 overflow-hidden rounded-[26px] bg-[#f7f2e8] p-4 ring-1 ring-black/5"
+                  >
+                    <div className="mb-4 flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <span
+                          className={`inline-flex rounded-full px-3 py-1 text-xs font-black ring-1 ${typeStyle}`}
+                        >
+                          {typeLabel}
+                        </span>
+
+                        <h3 className="mt-3 break-words text-2xl font-black text-[#111]">
+                          {event.name}
+                        </h3>
+                      </div>
+
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-[#d71920] shadow-sm">
+                        <CalendarDays />
+                      </div>
+                    </div>
+
+                    <div className="grid gap-2 text-sm text-black/60">
+                      <p className="flex items-center gap-2">
+                        <CalendarDays size={16} className="shrink-0" />
+                        <span className="font-bold text-black/75">
+                          {formatDate(event.start_date)}
+                          {event.end_date ? ` – ${formatDate(event.end_date)}` : ""}
+                        </span>
+                      </p>
+
+                      <p className="flex items-center gap-2">
+                        <Users size={16} className="shrink-0" />
+                        <span>
+                          {event.dojos?.name || "Bez dojo"} ·{" "}
+                          {event.training_topics?.name || "Bez témy"}
+                        </span>
+                      </p>
+
+                      <p className="flex items-center gap-2">
+                        <UserRound size={16} className="shrink-0" />
+                        <span>{event.trainers?.full_name || "Bez trénera"}</span>
+                      </p>
+                    </div>
+
+                    <div className={`mt-5 grid gap-2 ${isAdmin ? "grid-cols-2" : "grid-cols-1"}`}>
+                      <Link
+                        href={`/events/${event.id}`}
+                        className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-[#111] px-4 font-black text-white active:scale-[0.98]"
+                      >
+                        <ClipboardList size={18} />
+                        Detail
+                        <ChevronRight size={18} />
+                      </Link>
+
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          onClick={() => deleteEvent(event.id)}
+                          className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-[#d71920] px-4 font-black text-white active:scale-[0.98]"
+                        >
+                          <Trash2 size={18} />
+                          Vymazať
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
-
-        {attendance.length === 0 ? (
-          <p className="rounded-2xl bg-[#f7f2e8] p-5 text-center text-black/55">
-            Zatiaľ nie sú pridaní žiadni registrovaní žiaci.
-          </p>
-        ) : (
-          <div className="grid gap-3">
-            {attendance.map((row) => {
-              const status = row.status as Status;
-
-              return (
-                <div
-                  key={row.id}
-                  className="flex min-w-0 flex-col gap-3 rounded-2xl bg-[#f7f2e8] p-4 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div className="min-w-0">
-                    <p className="break-words text-lg font-black">
-                      {row.students?.first_name} {row.students?.last_name}
-                    </p>
-                    <p className="break-words text-sm text-black/55">
-                      {row.students?.technical_grade || "Bez stupňa"} · {row.students?.dojos?.name || "Bez dojo"}
-                    </p>
-                    <span className={`mt-2 inline-flex rounded-full px-3 py-1 text-xs font-black ${statusPillClass(status)}`}>
-                      {statusLabel(status)}
-                    </span>
-                  </div>
-
-                  <div className="flex shrink-0 gap-2">
-                    {canWriteAttendance && (
-                      <button
-                        type="button"
-                        onClick={() => cycleStatus(row)}
-                        className={`flex h-12 min-w-12 items-center justify-center rounded-2xl active:scale-[0.96] ${statusButtonClass(status)}`}
-                        title="Klik prepína: prítomný → neprítomný → odstrániť"
-                      >
-                        {status === "present" && <Check />}
-                        {status === "absent" && <X />}
-                        {!status && <CheckCircle2 />}
-                      </button>
-                    )}
-
-                    {canDelete && (
-                      <button
-                        type="button"
-                        onClick={() => removeStudent(row.id)}
-                        className="flex h-12 min-w-12 items-center justify-center rounded-2xl bg-black/10 text-black active:scale-[0.96] hover:bg-red-100"
-                      >
-                        <Trash2 size={20} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
       </div>
-
-      <div className="overflow-hidden rounded-[30px] bg-white p-5 shadow-sm ring-1 ring-black/10">
-        <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">
-              Hostia
-            </p>
-            <h2 className="text-2xl font-black">Externí účastníci</h2>
-          </div>
-
-          <span className="w-fit rounded-full bg-[#f7f2e8] px-4 py-2 text-sm font-black text-black/60">
-            {external.length} záznamov
-          </span>
-        </div>
-
-        {external.length === 0 ? (
-          <p className="rounded-2xl bg-[#f7f2e8] p-5 text-center text-black/55">
-            Zatiaľ nie sú pridaní žiadni externí účastníci.
-          </p>
-        ) : (
-          <div className="grid gap-3">
-            {external.map((row) => {
-              const status = row.status as Status;
-
-              return (
-                <div
-                  key={row.id}
-                  className="flex min-w-0 flex-col gap-3 rounded-2xl bg-[#f7f2e8] p-4 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div className="min-w-0">
-                    <p className="break-words text-lg font-black">
-                      {row.first_name} {row.last_name}
-                    </p>
-                    <p className="text-sm text-black/55">Externý účastník</p>
-                    <span className={`mt-2 inline-flex rounded-full px-3 py-1 text-xs font-black ${statusPillClass(status)}`}>
-                      {statusLabel(status)}
-                    </span>
-                  </div>
-
-                  <div className="flex shrink-0 gap-2">
-                    {canWriteAttendance && (
-                      <button
-                        type="button"
-                        onClick={() => toggleExternal(row)}
-                        className={`flex h-12 min-w-12 items-center justify-center rounded-2xl active:scale-[0.96] ${statusButtonClass(status)}`}
-                      >
-                        {row.status === "present" ? <Check /> : <X />}
-                      </button>
-                    )}
-
-                    {canDelete && (
-                      <button
-                        type="button"
-                        onClick={() => deleteExternal(row.id)}
-                        className="flex h-12 min-w-12 items-center justify-center rounded-2xl bg-black/10 text-black active:scale-[0.96] hover:bg-red-100"
-                      >
-                        <Trash2 size={20} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      <Link
-        href="/events"
-        className="inline-flex h-[56px] w-full items-center justify-center gap-2 rounded-2xl bg-black/10 px-4 font-black text-black active:scale-[0.98]"
-      >
-        <ArrowLeft size={18} />
-        Späť na akcie
-      </Link>
     </div>
   );
 }
