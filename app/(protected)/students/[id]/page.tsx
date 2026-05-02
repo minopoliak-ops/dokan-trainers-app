@@ -28,8 +28,7 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
   const [saving, setSaving] = useState(false);
 
   const canEdit = permissions?.can_add_students || permissions?.can_manage_trainers;
-  const canDelete =
-    permissions?.can_delete_students || permissions?.can_manage_trainers;
+  const canDelete = permissions?.can_delete_students || permissions?.can_manage_trainers;
 
   async function loadData() {
     const supabase = createClient();
@@ -125,16 +124,16 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
   }
 
   const inputClass =
-    "box-border h-[54px] w-full rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 text-[16px] font-bold outline-none focus:border-[#d71920] focus:bg-white disabled:opacity-60";
+    "box-border h-[54px] w-full min-w-0 max-w-full rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 text-base font-bold outline-none focus:border-[#d71920] focus:bg-white disabled:opacity-60";
 
   const labelClass = "mb-2 block text-sm font-black text-black/55";
 
   const textAreaClass =
-    "min-h-[120px] w-full rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 py-3 text-[16px] font-semibold outline-none focus:border-[#d71920] focus:bg-white disabled:opacity-60";
+    "box-border min-h-[120px] w-full min-w-0 max-w-full rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 py-3 text-base font-semibold outline-none focus:border-[#d71920] focus:bg-white disabled:opacity-60";
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40">
+      <div className="min-h-screen overflow-x-hidden bg-[#f7f2e8] px-4 py-6 pb-40 sm:px-5">
         <div className="rounded-3xl bg-white p-6 shadow-sm">
           Načítavam profil...
         </div>
@@ -144,7 +143,7 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
 
   if (!student) {
     return (
-      <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40">
+      <div className="min-h-screen overflow-x-hidden bg-[#f7f2e8] px-4 py-6 pb-40 sm:px-5">
         <div className="rounded-3xl bg-white p-6 shadow-sm">
           Cvičiaci sa nenašiel.
         </div>
@@ -153,9 +152,9 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
   }
 
   return (
-    <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40 space-y-6">
+    <div className="min-h-screen overflow-x-hidden bg-[#f7f2e8] px-4 py-6 pb-40 sm:px-5 space-y-6">
       <div className="overflow-hidden rounded-[32px] bg-[#111] text-white shadow-[0_18px_45px_rgba(0,0,0,0.25)]">
-        <div className="p-6">
+        <div className="min-w-0 p-6">
           <div
             className={`mb-5 flex h-14 w-14 items-center justify-center rounded-2xl ${
               isAdult ? "bg-green-600" : "bg-blue-600"
@@ -168,7 +167,7 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
             Profil cvičiaceho
           </p>
 
-          <h1 className="mt-2 text-4xl font-black tracking-tight">
+          <h1 className="mt-2 break-words text-4xl font-black tracking-tight">
             {student.first_name} {student.last_name}
           </h1>
 
@@ -177,31 +176,31 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
             {student.technical_grade || "Bez technického stupňa"}
           </p>
 
-          <div className="mt-6 grid gap-3 md:grid-cols-4">
-            <div className="rounded-2xl bg-white/10 p-4">
+          <div className="mt-6 grid min-w-0 gap-3 md:grid-cols-4">
+            <div className="min-w-0 rounded-2xl bg-white/10 p-4">
               <p className="text-sm text-white/50">Typ</p>
-              <p className="text-2xl font-black">
+              <p className="truncate text-2xl font-black">
                 {isAdult ? "Dospelý" : "Dieťa"}
               </p>
             </div>
 
-            <div className="rounded-2xl bg-white/10 p-4">
+            <div className="min-w-0 rounded-2xl bg-white/10 p-4">
               <p className="text-sm text-white/50">Rok narodenia</p>
-              <p className="text-2xl font-black">
+              <p className="truncate text-2xl font-black">
                 {student.birth_year || "—"}
               </p>
             </div>
 
-            <div className="rounded-2xl bg-white/10 p-4">
+            <div className="min-w-0 rounded-2xl bg-white/10 p-4">
               <p className="text-sm text-white/50">Stupeň</p>
-              <p className="text-2xl font-black">
+              <p className="truncate text-2xl font-black">
                 {student.technical_grade || "—"}
               </p>
             </div>
 
-            <div className="rounded-2xl bg-white/10 p-4">
+            <div className="min-w-0 rounded-2xl bg-white/10 p-4">
               <p className="text-sm text-white/50">Skúšanie</p>
-              <p className="text-2xl font-black">
+              <p className="truncate text-2xl font-black">
                 {student.last_grading_date || "—"}
               </p>
             </div>
@@ -209,36 +208,36 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <div className="rounded-[28px] bg-white p-5 shadow-sm ring-1 ring-black/10">
+      <div className="grid min-w-0 gap-4 md:grid-cols-3">
+        <div className="min-w-0 overflow-hidden rounded-[28px] bg-white p-5 shadow-sm ring-1 ring-black/10">
           <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#d71920] text-white">
             <MapPin />
           </div>
           <h2 className="text-xl font-black">Dojo</h2>
-          <p className="mt-1 text-sm font-bold text-black/55">
+          <p className="mt-1 break-words text-sm font-bold text-black/55">
             {student.dojos?.name || "Bez dojo"}
           </p>
-          <p className="mt-1 text-sm text-black/45">
+          <p className="mt-1 break-words text-sm text-black/45">
             {student.dojos?.address || "Bez adresy"}
           </p>
         </div>
 
         <a
           href={contactPhone ? `tel:${contactPhone}` : undefined}
-          className="rounded-[28px] bg-white p-5 shadow-sm ring-1 ring-black/10 active:scale-[0.98]"
+          className="min-w-0 overflow-hidden rounded-[28px] bg-white p-5 shadow-sm ring-1 ring-black/10 active:scale-[0.98]"
         >
           <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#111] text-white">
             <Phone />
           </div>
           <h2 className="text-xl font-black">Telefón</h2>
-          <p className="mt-1 text-sm font-bold text-black/55">
+          <p className="mt-1 break-words text-sm font-bold text-black/55">
             {contactPhone || "Nie je vyplnený"}
           </p>
         </a>
 
         <a
           href={contactEmail ? `mailto:${contactEmail}` : undefined}
-          className="rounded-[28px] bg-white p-5 shadow-sm ring-1 ring-black/10 active:scale-[0.98]"
+          className="min-w-0 overflow-hidden rounded-[28px] bg-white p-5 shadow-sm ring-1 ring-black/10 active:scale-[0.98]"
         >
           <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#f7f2e8] text-[#d71920]">
             <Mail />
@@ -250,20 +249,20 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
         </a>
       </div>
 
-      <div className="rounded-[30px] bg-white p-5 shadow-sm ring-1 ring-black/10 space-y-5">
-        <div>
+      <div className="min-w-0 space-y-5 overflow-hidden rounded-[30px] bg-white p-4 shadow-sm ring-1 ring-black/10 sm:p-5">
+        <div className="min-w-0">
           <p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">
             Úprava profilu
           </p>
-          <h2 className="text-2xl font-black">Osobné údaje</h2>
+          <h2 className="break-words text-2xl font-black">Osobné údaje</h2>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 rounded-3xl bg-[#f7f2e8] p-2">
+        <div className="grid min-w-0 grid-cols-2 gap-2 rounded-3xl bg-[#f7f2e8] p-2">
           <button
             type="button"
             disabled={!canEdit}
             onClick={() => updateField("is_adult", false)}
-            className={`rounded-2xl px-4 py-4 font-black active:scale-[0.98] disabled:opacity-60 ${
+            className={`min-w-0 rounded-2xl px-3 py-4 font-black active:scale-[0.98] disabled:opacity-60 ${
               !isAdult ? "bg-blue-600 text-white" : "bg-white text-black"
             }`}
           >
@@ -274,7 +273,7 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
             type="button"
             disabled={!canEdit}
             onClick={() => updateField("is_adult", true)}
-            className={`rounded-2xl px-4 py-4 font-black active:scale-[0.98] disabled:opacity-60 ${
+            className={`min-w-0 rounded-2xl px-3 py-4 font-black active:scale-[0.98] disabled:opacity-60 ${
               isAdult ? "bg-green-600 text-white" : "bg-white text-black"
             }`}
           >
@@ -282,8 +281,8 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
           </button>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <div>
+        <div className="grid min-w-0 gap-4 md:grid-cols-2">
+          <div className="min-w-0">
             <label className={labelClass}>
               {isAdult ? "Meno dospelého cvičiaceho" : "Meno dieťaťa"}
             </label>
@@ -295,11 +294,9 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
             />
           </div>
 
-          <div>
+          <div className="min-w-0">
             <label className={labelClass}>
-              {isAdult
-                ? "Priezvisko dospelého cvičiaceho"
-                : "Priezvisko dieťaťa"}
+              {isAdult ? "Priezvisko dospelého cvičiaceho" : "Priezvisko dieťaťa"}
             </label>
             <input
               className={inputClass}
@@ -309,7 +306,7 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
             />
           </div>
 
-          <div>
+          <div className="min-w-0">
             <label className={labelClass}>Rok narodenia</label>
             <input
               className={inputClass}
@@ -320,7 +317,7 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
             />
           </div>
 
-          <div>
+          <div className="min-w-0">
             <label className={labelClass}>Dojo</label>
             <select
               className={inputClass}
@@ -337,12 +334,12 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
             </select>
           </div>
 
-          <div>
+          <div className="min-w-0">
             <label className={labelClass}>Technický stupeň</label>
-            <div className="relative">
+            <div className="relative min-w-0">
               <GraduationCap
                 size={18}
-                className="absolute left-4 top-1/2 -translate-y-1/2 text-black/35"
+                className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-black/35"
               />
               <input
                 className={`${inputClass} pl-11`}
@@ -353,42 +350,38 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
             </div>
           </div>
 
-          <div>
-            <label className={labelClass}>
-              Dátum posledného skúšania / páskovania
-            </label>
-            <div className="relative">
+          <div className="min-w-0">
+            <label className={labelClass}>Dátum posledného skúšania / páskovania</label>
+            <div className="relative min-w-0">
               <CalendarDays
                 size={18}
-                className="absolute left-4 top-1/2 -translate-y-1/2 text-black/35"
+                className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-black/35"
               />
               <input
                 type="date"
                 className={`${inputClass} pl-11`}
                 value={student.last_grading_date || ""}
                 disabled={!canEdit}
-                onChange={(e) =>
-                  updateField("last_grading_date", e.target.value)
-                }
+                onChange={(e) => updateField("last_grading_date", e.target.value)}
               />
             </div>
           </div>
         </div>
       </div>
 
-      <div className="rounded-[30px] bg-white p-5 shadow-sm ring-1 ring-black/10 space-y-5">
-        <div>
+      <div className="min-w-0 space-y-5 overflow-hidden rounded-[30px] bg-white p-4 shadow-sm ring-1 ring-black/10 sm:p-5">
+        <div className="min-w-0">
           <p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">
             Kontakt
           </p>
-          <h2 className="text-2xl font-black">
+          <h2 className="break-words text-2xl font-black">
             {isAdult ? "Kontakt cvičiaceho" : "Kontakt rodiča"}
           </h2>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid min-w-0 gap-4 md:grid-cols-2">
           {!isAdult && (
-            <div className="md:col-span-2">
+            <div className="min-w-0 md:col-span-2">
               <label className={labelClass}>Meno a priezvisko rodiča</label>
               <input
                 className={inputClass}
@@ -399,7 +392,7 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
             </div>
           )}
 
-          <div>
+          <div className="min-w-0">
             <label className={labelClass}>
               {isAdult ? "Telefón cvičiaceho" : "Telefón rodiča"}
             </label>
@@ -411,7 +404,7 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
             />
           </div>
 
-          <div>
+          <div className="min-w-0">
             <label className={labelClass}>
               {isAdult ? "Email cvičiaceho" : "Email rodiča"}
             </label>
@@ -426,15 +419,15 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
         </div>
       </div>
 
-      <div className="rounded-[30px] bg-white p-5 shadow-sm ring-1 ring-black/10 space-y-5">
-        <div>
+      <div className="min-w-0 space-y-5 overflow-hidden rounded-[30px] bg-white p-4 shadow-sm ring-1 ring-black/10 sm:p-5">
+        <div className="min-w-0">
           <p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">
             Bezpečnosť a poznámky
           </p>
-          <h2 className="text-2xl font-black">Zdravie, lieky, poznámky</h2>
+          <h2 className="break-words text-2xl font-black">Zdravie, lieky, poznámky</h2>
         </div>
 
-        <div>
+        <div className="min-w-0">
           <label className={labelClass}>
             <span className="inline-flex items-center gap-2">
               <HeartPulse size={17} />
@@ -450,7 +443,7 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
           />
         </div>
 
-        <div>
+        <div className="min-w-0">
           <label className={labelClass}>
             <span className="inline-flex items-center gap-2">
               <ShieldAlert size={17} />
@@ -466,7 +459,7 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
           />
         </div>
 
-        <div>
+        <div className="min-w-0">
           <label className={labelClass}>Poznámky</label>
           <textarea
             className={textAreaClass}
@@ -478,12 +471,12 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid min-w-0 gap-3 md:grid-cols-2">
         {canEdit && (
           <button
             onClick={saveStudent}
             disabled={saving}
-            className="inline-flex h-[58px] items-center justify-center gap-2 rounded-2xl bg-[#d71920] px-4 font-black text-white shadow-[0_8px_18px_rgba(215,25,32,0.25)] active:scale-[0.98] disabled:opacity-60"
+            className="inline-flex h-[58px] min-w-0 items-center justify-center gap-2 rounded-2xl bg-[#d71920] px-4 font-black text-white shadow-[0_8px_18px_rgba(215,25,32,0.25)] active:scale-[0.98] disabled:opacity-60"
           >
             <Save size={20} />
             {saving ? "Ukladám..." : "Uložiť zmeny"}
@@ -493,7 +486,7 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
         {canDelete && (
           <button
             onClick={deleteStudent}
-            className="inline-flex h-[58px] items-center justify-center gap-2 rounded-2xl bg-[#111] px-4 font-black text-white active:scale-[0.98]"
+            className="inline-flex h-[58px] min-w-0 items-center justify-center gap-2 rounded-2xl bg-[#111] px-4 font-black text-white active:scale-[0.98]"
           >
             <Trash2 size={20} />
             Deaktivovať cvičiaceho
@@ -503,7 +496,7 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
 
       <Link
         href={`/dojos/${student.dojo_id}`}
-        className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-black/10 px-5 py-4 font-black text-black active:scale-[0.98]"
+        className="inline-flex w-full min-w-0 items-center justify-center gap-2 rounded-2xl bg-black/10 px-5 py-4 font-black text-black active:scale-[0.98]"
       >
         <ArrowLeft size={18} />
         Späť do dojo
