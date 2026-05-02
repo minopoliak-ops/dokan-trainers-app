@@ -2,6 +2,21 @@
 
 import { createClient } from "@/lib/supabase/browser";
 import { usePermissions } from "@/lib/usePermissions";
+import {
+  Archive,
+  BarChart3,
+  CalendarDays,
+  ChevronDown,
+  ChevronUp,
+  Download,
+  FileDown,
+  Filter,
+  Search,
+  ShieldAlert,
+  Trash2,
+  Trophy,
+  UserRound,
+} from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -55,8 +70,6 @@ function juneEndDefault() {
 function safeArchiveDeleteDate(archiveUntil: string) {
   const prevEnd = previousMonthEnd();
   if (!archiveUntil) return prevEnd;
-
-  // Nikdy nedovolíme vymazať aktuálny mesiac ani budúcnosť.
   return archiveUntil > prevEnd ? prevEnd : archiveUntil;
 }
 
@@ -98,39 +111,44 @@ function AttendanceGraph({
   ];
 
   return (
-    <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
+    <div className="min-w-0 overflow-hidden rounded-[30px] bg-white p-4 shadow-sm ring-1 ring-black/10 sm:p-6">
       <div className="mb-4">
-        <h2 className="text-2xl font-bold">Porovnanie mesiacov</h2>
-        <p className="text-black/60">
+        <p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">
+          Graf
+        </p>
+        <h2 className="text-2xl font-black">Porovnanie mesiacov</h2>
+        <p className="mt-1 text-sm text-black/55">
           Dochádzka vybraného cvičiaceho za posledné mesiace.
         </p>
       </div>
 
-      <ResponsiveContainer width="100%" height={280}>
-        <LineChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="type" />
-          <YAxis allowDecimals={false} />
-          <Tooltip />
-          <Legend />
-          <Line
-            type="monotone"
-            dataKey={oldMonth.label}
-            stroke="#dc2626"
-            strokeWidth={3}
-            dot={{ r: 6 }}
-            activeDot={{ r: 8 }}
-          />
-          <Line
-            type="monotone"
-            dataKey={newMonth.label}
-            stroke="#16a34a"
-            strokeWidth={3}
-            dot={{ r: 6 }}
-            activeDot={{ r: 8 }}
-          />
-        </LineChart>
-      </ResponsiveContainer>
+      <div className="h-[280px] min-w-0">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={data}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="type" />
+            <YAxis allowDecimals={false} />
+            <Tooltip />
+            <Legend />
+            <Line
+              type="monotone"
+              dataKey={oldMonth.label}
+              stroke="#dc2626"
+              strokeWidth={3}
+              dot={{ r: 5 }}
+              activeDot={{ r: 7 }}
+            />
+            <Line
+              type="monotone"
+              dataKey={newMonth.label}
+              stroke="#16a34a"
+              strokeWidth={3}
+              dot={{ r: 5 }}
+              activeDot={{ r: 7 }}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }
@@ -145,6 +163,7 @@ export default function StatsPage() {
   const [attendance, setAttendance] = useState<any[]>([]);
   const [events, setEvents] = useState<any[]>([]);
   const [eventAttendance, setEventAttendance] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const [selectedDojoId, setSelectedDojoId] = useState("");
   const [selectedStudentId, setSelectedStudentId] = useState("");
@@ -160,6 +179,8 @@ export default function StatsPage() {
 
   async function loadData() {
     if (!permissions) return;
+
+    setLoading(true);
 
     const supabase = createClient();
     let allowedDojoIds: string[] = [];
@@ -179,6 +200,7 @@ export default function StatsPage() {
         setAttendance([]);
         setEvents([]);
         setEventAttendance([]);
+        setLoading(false);
         return;
       }
     }
@@ -216,18 +238,12 @@ export default function StatsPage() {
 
     const attendanceResult =
       trainingIds.length > 0
-        ? await supabase
-            .from("attendance")
-            .select("*")
-            .in("training_id", trainingIds)
+        ? await supabase.from("attendance").select("*").in("training_id", trainingIds)
         : { data: [], error: null };
 
     const eventAttendanceResult =
       eventIds.length > 0
-        ? await supabase
-            .from("event_attendance")
-            .select("*")
-            .in("event_id", eventIds)
+        ? await supabase.from("event_attendance").select("*").in("event_id", eventIds)
         : { data: [], error: null };
 
     if (dojosResult.error) alert(dojosResult.error.message);
@@ -243,6 +259,7 @@ export default function StatsPage() {
     setAttendance(attendanceResult.data || []);
     setEvents(eventsResult.data || []);
     setEventAttendance(eventAttendanceResult.data || []);
+    setLoading(false);
   }
 
   useEffect(() => {
@@ -367,16 +384,18 @@ export default function StatsPage() {
   const presentCount = studentTrainingAttendance.filter(
     (a) => a.status === "present"
   ).length;
+
   const absentCount = studentTrainingAttendance.filter(
     (a) => a.status === "absent"
   ).length;
+
   const totalCount = studentTrainingAttendance.length;
-  const percent =
-    totalCount > 0 ? Math.round((presentCount / totalCount) * 100) : 0;
+  const percent = totalCount > 0 ? Math.round((presentCount / totalCount) * 100) : 0;
 
   const eventPresentCount = studentEventAttendance.filter(
     (a) => a.status === "present"
   ).length;
+
   const eventAbsentCount = studentEventAttendance.filter(
     (a) => a.status === "absent"
   ).length;
@@ -559,15 +578,12 @@ export default function StatsPage() {
         return alert(eventAttendanceDeleteError.message);
       }
 
-      // Ak tabuľka existuje, vyčistí aj externých účastníkov. Ak nie, iba zaloguje chybu.
       const { error: externalDeleteError } = await supabase
         .from("event_external_participants")
         .delete()
         .in("event_id", archiveEventIds);
 
-      if (externalDeleteError) {
-        console.error(externalDeleteError.message);
-      }
+      if (externalDeleteError) console.error(externalDeleteError.message);
 
       const { error: eventsDeleteError } = await supabase
         .from("events")
@@ -586,28 +602,78 @@ export default function StatsPage() {
     loadData();
   }
 
+  const selectClass =
+    "h-[56px] w-full min-w-0 rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 text-base font-bold outline-none focus:border-[#d71920] focus:bg-white";
+
+  const inputClass =
+    "h-[56px] w-full min-w-0 rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 text-base font-bold outline-none focus:border-[#d71920] focus:bg-white";
+
   return (
-    <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40 space-y-6">
-      <div className="rounded-3xl bg-brand-black p-6 text-white shadow-lg">
-        <h1 className="text-3xl font-bold">Štatistiky</h1>
-        <p className="mt-2 text-white/70">
-          {isAdmin
-            ? "Dojo, návštevnosť, témy, tréningy, semináre a tábory."
-            : "Štatistiky iba pre tvoje priradené dojo."}
-        </p>
+    <div className="min-h-screen overflow-x-hidden bg-[#f7f2e8] px-4 py-6 pb-40 sm:px-5 space-y-6">
+      <div className="overflow-hidden rounded-[32px] bg-[#111] text-white shadow-[0_18px_45px_rgba(0,0,0,0.25)]">
+        <div className="p-6">
+          <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#d71920]">
+            <BarChart3 size={28} />
+          </div>
+
+          <p className="text-sm font-bold uppercase tracking-[0.18em] text-white/45">
+            DOKAN analytika
+          </p>
+
+          <h1 className="mt-2 text-4xl font-black tracking-tight">Štatistiky</h1>
+
+          <p className="mt-3 max-w-2xl text-white/65">
+            {isAdmin
+              ? "Dojo, návštevnosť, témy, tréningy, semináre, tábory a bezpečný archív sezóny."
+              : "Štatistiky iba pre tvoje priradené dojo."}
+          </p>
+
+          <div className="mt-6 grid gap-3 md:grid-cols-4">
+            <div className="rounded-2xl bg-white/10 p-4">
+              <p className="text-sm text-white/50">Dojo</p>
+              <p className="text-3xl font-black">{dojos.length}</p>
+            </div>
+
+            <div className="rounded-2xl bg-white/10 p-4">
+              <p className="text-sm text-white/50">Žiaci</p>
+              <p className="text-3xl font-black">{students.length}</p>
+            </div>
+
+            <div className="rounded-2xl bg-white/10 p-4">
+              <p className="text-sm text-white/50">Tréningy</p>
+              <p className="text-3xl font-black">{trainings.length}</p>
+            </div>
+
+            <div className="rounded-2xl bg-white/10 p-4">
+              <p className="text-sm text-white/50">Semináre/tábory</p>
+              <p className="text-3xl font-black">{events.length}</p>
+            </div>
+          </div>
+        </div>
       </div>
 
       {isAdmin && (
-        <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
-          <h2 className="text-2xl font-bold">Archív sezóny</h2>
-          <p className="mt-2 text-sm text-black/60">
-            Najprv stiahni archív. Mazanie sa odomkne až potom. Aktuálny mesiac
-            je vždy zamknutý a nedá sa vymazať.
-          </p>
+        <div className="overflow-hidden rounded-[30px] bg-white p-4 shadow-sm ring-1 ring-black/10 sm:p-6">
+          <div className="mb-5 flex items-start gap-3">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#111] text-white">
+              <Archive />
+            </div>
 
-          <div className="mt-4 grid gap-3 md:grid-cols-4">
-            <div className="md:col-span-2">
-              <label className="mb-1 block text-sm font-bold text-black/60">
+            <div className="min-w-0">
+              <p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">
+                Bezpečná údržba
+              </p>
+              <h2 className="text-2xl font-black">Archív sezóny</h2>
+              <p className="mt-1 text-sm text-black/55">
+                Najprv stiahni archív. Mazanie sa odomkne až potom. Aktuálny
+                mesiac je vždy zamknutý.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid gap-3 lg:grid-cols-4">
+            <div className="lg:col-span-2">
+              <label className="mb-2 block text-sm font-black text-black/55">
                 Archivovať do dátumu
               </label>
               <input
@@ -617,21 +683,23 @@ export default function StatsPage() {
                   setArchiveUntil(e.target.value);
                   setArchiveDownloaded(false);
                 }}
-                className="w-full rounded-xl border px-4 py-3"
+                className={inputClass}
               />
             </div>
 
-            <div className="rounded-2xl bg-[#f7f2e8] p-4">
+            <div className="rounded-3xl bg-[#f7f2e8] p-4">
               <p className="text-sm text-black/60">Bezpečné mazanie do</p>
-              <p className="text-xl font-black">{archiveDeleteUntil}</p>
+              <p className="mt-1 break-words text-2xl font-black">
+                {archiveDeleteUntil}
+              </p>
               <p className="mt-1 text-xs text-black/50">
                 Aktuálny mesiac od {currentMonth} je zamknutý.
               </p>
             </div>
 
-            <div className="rounded-2xl bg-[#f7f2e8] p-4">
+            <div className="rounded-3xl bg-[#f7f2e8] p-4">
               <p className="text-sm text-black/60">Na archiváciu</p>
-              <p className="text-sm">
+              <p className="mt-1 text-sm">
                 Tréningy: <b>{archiveTrainings.length}</b>
               </p>
               <p className="text-sm">
@@ -647,16 +715,18 @@ export default function StatsPage() {
             <button
               onClick={exportArchive}
               disabled={archiveWorking}
-              className="rounded-xl bg-black px-4 py-3 font-bold text-white disabled:opacity-60"
+              className="inline-flex h-[56px] items-center justify-center gap-2 rounded-2xl bg-[#111] px-4 font-black text-white active:scale-[0.98] disabled:opacity-60"
             >
+              <Download size={20} />
               Stiahnuť archív
             </button>
 
             <button
               onClick={deleteArchivedHistory}
               disabled={!archiveDownloaded || archiveWorking}
-              className="rounded-xl bg-[#d71920] px-4 py-3 font-bold text-white disabled:opacity-40"
+              className="inline-flex h-[56px] items-center justify-center gap-2 rounded-2xl bg-[#d71920] px-4 font-black text-white active:scale-[0.98] disabled:opacity-40"
             >
+              <Trash2 size={20} />
               {archiveWorking
                 ? "Mažem..."
                 : archiveDownloaded
@@ -664,11 +734,29 @@ export default function StatsPage() {
                 : "Najprv stiahni archív"}
             </button>
           </div>
+
+          {!archiveDownloaded && (
+            <div className="mt-4 flex gap-3 rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-800">
+              <ShieldAlert className="shrink-0" size={20} />
+              Mazanie je zamknuté, kým nestiahneš archív.
+            </div>
+          )}
         </div>
       )}
 
-      <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
-        <h2 className="mb-4 text-2xl font-bold">Filter</h2>
+      <div className="overflow-hidden rounded-[30px] bg-white p-4 shadow-sm ring-1 ring-black/10 sm:p-6">
+        <div className="mb-4 flex items-center gap-3">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#f7f2e8] text-[#d71920]">
+            <Filter />
+          </div>
+
+          <div>
+            <p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">
+              Výber
+            </p>
+            <h2 className="text-2xl font-black">Filter</h2>
+          </div>
+        </div>
 
         <div className="grid gap-3 md:grid-cols-2">
           <select
@@ -677,7 +765,7 @@ export default function StatsPage() {
               setSelectedDojoId(e.target.value);
               setSelectedStudentId("");
             }}
-            className="rounded-xl border px-4 py-3"
+            className={selectClass}
           >
             <option value="">Všetky dojo</option>
             {dojos.map((dojo) => (
@@ -696,7 +784,7 @@ export default function StatsPage() {
               setTrainingSearch("");
               setEventSearch("");
             }}
-            className="rounded-xl border px-4 py-3"
+            className={selectClass}
           >
             <option value="">Vyber cvičiaceho</option>
             {filteredStudents.map((student) => (
@@ -708,70 +796,87 @@ export default function StatsPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {dojoStats
-          .filter((stat) => !selectedDojoId || stat.dojo.id === selectedDojoId)
-          .map((stat) => (
-            <div
-              key={stat.dojo.id}
-              className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10"
-            >
-              <p className="text-black/60">Dojo</p>
-              <h2 className="text-xl font-bold">{stat.dojo.name}</h2>
+      {loading ? (
+        <div className="rounded-3xl bg-white p-6 text-center font-bold text-black/55 shadow-sm">
+          Načítavam štatistiky...
+        </div>
+      ) : (
+        <div className="grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {dojoStats
+            .filter((stat) => !selectedDojoId || stat.dojo.id === selectedDojoId)
+            .map((stat) => (
+              <div
+                key={stat.dojo.id}
+                className="min-w-0 overflow-hidden rounded-[28px] bg-white p-5 shadow-sm ring-1 ring-black/10"
+              >
+                <p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">
+                  Dojo
+                </p>
+                <h2 className="mt-1 break-words text-xl font-black">
+                  {stat.dojo.name}
+                </h2>
 
-              <div className="mt-4 grid gap-2 text-sm">
-                <p>
-                  Tréningy: <b>{stat.trainingsCount}</b>
-                </p>
-                <p className="text-green-700">
-                  Prítomnosti: <b>{stat.present}</b>
-                </p>
-                <p className="text-red-700">
-                  Neprítomnosti: <b>{stat.absent}</b>
-                </p>
-                <p>
-                  Prebrané témy: <b>{stat.topicsCount}</b>
-                </p>
-                <p>
-                  Semináre/tábory: <b>{stat.eventsCount}</b>
-                </p>
-                <p>
-                  Účasť semináre/tábory: <b>{stat.eventPresent}</b>
-                </p>
+                <div className="mt-4 grid gap-2 text-sm">
+                  <p>
+                    Tréningy: <b>{stat.trainingsCount}</b>
+                  </p>
+                  <p className="text-green-700">
+                    Prítomnosti: <b>{stat.present}</b>
+                  </p>
+                  <p className="text-red-700">
+                    Neprítomnosti: <b>{stat.absent}</b>
+                  </p>
+                  <p>
+                    Prebrané témy: <b>{stat.topicsCount}</b>
+                  </p>
+                  <p>
+                    Semináre/tábory: <b>{stat.eventsCount}</b>
+                  </p>
+                  <p>
+                    Účasť semináre/tábory: <b>{stat.eventPresent}</b>
+                  </p>
+                </div>
               </div>
-            </div>
-          ))}
-      </div>
+            ))}
+        </div>
+      )}
 
       {selectedStudent && (
         <>
-          <div className="grid gap-4 md:grid-cols-5">
-            <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10 md:col-span-2">
-              <p className="text-black/60">Cvičiaci</p>
-              <h2 className="text-2xl font-bold">
+          <div className="grid min-w-0 gap-4 md:grid-cols-5">
+            <div className="min-w-0 overflow-hidden rounded-[28px] bg-white p-5 shadow-sm ring-1 ring-black/10 md:col-span-2">
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#111] text-white">
+                <UserRound />
+              </div>
+              <p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">
+                Cvičiaci
+              </p>
+              <h2 className="mt-1 break-words text-2xl font-black">
                 {selectedStudent.first_name} {selectedStudent.last_name}
               </h2>
-              <p className="text-black/60">
+              <p className="mt-1 text-sm text-black/55">
                 {selectedStudent.technical_grade || "Bez stupňa"} ·{" "}
                 {selectedStudent.dojos?.name}
               </p>
             </div>
 
-            <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
-              <p className="text-black/60">Tréningy prítomný</p>
-              <h2 className="text-4xl font-black text-green-700">
+            <div className="rounded-[28px] bg-white p-5 shadow-sm ring-1 ring-black/10">
+              <p className="text-sm text-black/55">Tréningy prítomný</p>
+              <h2 className="mt-1 text-4xl font-black text-green-700">
                 {presentCount}
               </h2>
             </div>
 
-            <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
-              <p className="text-black/60">Tréningy neprítomný</p>
-              <h2 className="text-4xl font-black text-red-700">{absentCount}</h2>
+            <div className="rounded-[28px] bg-white p-5 shadow-sm ring-1 ring-black/10">
+              <p className="text-sm text-black/55">Tréningy neprítomný</p>
+              <h2 className="mt-1 text-4xl font-black text-red-700">
+                {absentCount}
+              </h2>
             </div>
 
-            <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
-              <p className="text-black/60">Účasť tréningy</p>
-              <h2 className="text-4xl font-black">{percent}%</h2>
+            <div className="rounded-[28px] bg-white p-5 shadow-sm ring-1 ring-black/10">
+              <p className="text-sm text-black/55">Účasť tréningy</p>
+              <h2 className="mt-1 text-4xl font-black">{percent}%</h2>
             </div>
           </div>
 
@@ -782,38 +887,45 @@ export default function StatsPage() {
             />
           )}
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
-              <h2 className="mb-4 text-2xl font-bold">Témy tréningov</h2>
+          <div className="grid min-w-0 gap-4 md:grid-cols-2">
+            <div className="min-w-0 overflow-hidden rounded-[30px] bg-white p-5 shadow-sm ring-1 ring-black/10">
+              <h2 className="text-2xl font-black">Témy tréningov</h2>
 
               {topicStats.length === 0 ? (
-                <p>Zatiaľ nemá dochádzku na tréningoch.</p>
+                <p className="mt-4 rounded-2xl bg-[#f7f2e8] p-4 text-black/55">
+                  Zatiaľ nemá dochádzku na tréningoch.
+                </p>
               ) : (
-                <div className="grid gap-3">
+                <div className="mt-4 grid gap-3">
                   {topicStats.map(([topic, stat]) => (
                     <div
                       key={topic}
-                      className="rounded-2xl border border-black/10 p-4"
+                      className="rounded-2xl bg-[#f7f2e8] p-4"
                     >
-                      <p className="text-lg font-bold">{topic}</p>
-                      <p className="text-green-700">Prítomný: {stat.present}</p>
-                      <p className="text-red-700">Neprítomný: {stat.absent}</p>
+                      <p className="break-words text-lg font-black">{topic}</p>
+                      <p className="mt-2 text-sm text-green-700">
+                        Prítomný: <b>{stat.present}</b>
+                      </p>
+                      <p className="text-sm text-red-700">
+                        Neprítomný: <b>{stat.absent}</b>
+                      </p>
                     </div>
                   ))}
                 </div>
               )}
             </div>
 
-            <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
-              <h2 className="mb-4 text-2xl font-bold">Semináre a tábory</h2>
+            <div className="min-w-0 overflow-hidden rounded-[30px] bg-white p-5 shadow-sm ring-1 ring-black/10">
+              <h2 className="text-2xl font-black">Semináre a tábory</h2>
 
-              <div className="mb-4 grid gap-3 md:grid-cols-2">
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <div className="rounded-2xl bg-green-50 p-4">
                   <p className="font-bold text-green-800">Prítomný</p>
                   <p className="text-3xl font-black text-green-700">
                     {eventPresentCount}
                   </p>
                 </div>
+
                 <div className="rounded-2xl bg-red-50 p-4">
                   <p className="font-bold text-red-800">Neprítomný</p>
                   <p className="text-3xl font-black text-red-700">
@@ -823,17 +935,23 @@ export default function StatsPage() {
               </div>
 
               {eventTypeStats.length === 0 ? (
-                <p>Zatiaľ nemá semináre alebo tábory.</p>
+                <p className="mt-4 rounded-2xl bg-[#f7f2e8] p-4 text-black/55">
+                  Zatiaľ nemá semináre alebo tábory.
+                </p>
               ) : (
-                <div className="grid gap-3">
+                <div className="mt-4 grid gap-3">
                   {eventTypeStats.map(([type, stat]) => (
                     <div
                       key={type}
-                      className="rounded-2xl border border-black/10 p-4"
+                      className="rounded-2xl bg-[#f7f2e8] p-4"
                     >
-                      <p className="font-bold">{type}</p>
-                      <p className="text-green-700">Prítomný: {stat.present}</p>
-                      <p className="text-red-700">Neprítomný: {stat.absent}</p>
+                      <p className="break-words font-black">{type}</p>
+                      <p className="mt-2 text-sm text-green-700">
+                        Prítomný: <b>{stat.present}</b>
+                      </p>
+                      <p className="text-sm text-red-700">
+                        Neprítomný: <b>{stat.absent}</b>
+                      </p>
                     </div>
                   ))}
                 </div>
@@ -841,54 +959,63 @@ export default function StatsPage() {
             </div>
           </div>
 
-          <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
+          <div className="overflow-hidden rounded-[30px] bg-white p-5 shadow-sm ring-1 ring-black/10">
             <button
               type="button"
               onClick={() => setShowTrainingHistory((v) => !v)}
-              className="flex w-full items-center justify-between text-left"
+              className="flex w-full items-center justify-between gap-4 text-left active:scale-[0.99]"
             >
-              <div>
-                <h2 className="text-2xl font-bold">História tréningov</h2>
+              <div className="min-w-0">
+                <h2 className="text-2xl font-black">História tréningov</h2>
                 <p className="text-sm text-black/50">
                   {studentTrainingAttendance.length} záznamov
                 </p>
               </div>
 
-              <span className="rounded-xl bg-black px-4 py-2 text-sm font-bold text-white">
+              <span className="inline-flex shrink-0 items-center gap-2 rounded-2xl bg-[#111] px-4 py-3 text-sm font-black text-white">
                 {showTrainingHistory ? "Skryť" : "Rozbaliť"}
+                {showTrainingHistory ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
               </span>
             </button>
 
             {showTrainingHistory && (
               <div className="mt-5 space-y-4">
-                <input
-                  value={trainingSearch}
-                  onChange={(e) => setTrainingSearch(e.target.value)}
-                  placeholder="Vyhľadať podľa dátumu, názvu, témy, dojo..."
-                  className="w-full rounded-xl border px-4 py-3"
-                />
+                <div className="relative">
+                  <Search
+                    size={18}
+                    className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-black/35"
+                  />
+                  <input
+                    value={trainingSearch}
+                    onChange={(e) => setTrainingSearch(e.target.value)}
+                    placeholder="Vyhľadať podľa dátumu, názvu, témy, dojo..."
+                    className={`${inputClass} pl-11`}
+                  />
+                </div>
 
                 <div className="grid gap-3">
                   {filteredTrainingHistory.length === 0 ? (
-                    <p>Žiadna história tréningov pre tento filter.</p>
+                    <p className="rounded-2xl bg-[#f7f2e8] p-4 text-black/55">
+                      Žiadna história tréningov pre tento filter.
+                    </p>
                   ) : (
                     filteredTrainingHistory.map((item) => (
                       <div
                         key={item.id}
-                        className="flex items-center justify-between gap-4 rounded-2xl border border-black/10 p-4"
+                        className="flex min-w-0 flex-col gap-3 rounded-2xl bg-[#f7f2e8] p-4 sm:flex-row sm:items-center sm:justify-between"
                       >
-                        <div>
-                          <p className="font-bold">
+                        <div className="min-w-0">
+                          <p className="break-words font-black">
                             {item.training?.training_date} — {item.training?.title}
                           </p>
-                          <p className="text-black/60">
+                          <p className="break-words text-sm text-black/55">
                             {item.training?.dojos?.name} ·{" "}
                             {item.training?.training_topics?.name || "Bez témy"}
                           </p>
                         </div>
 
                         <span
-                          className={`shrink-0 rounded-xl px-4 py-2 font-bold ${
+                          className={`w-fit shrink-0 rounded-2xl px-4 py-2 text-sm font-black ${
                             item.status === "present"
                               ? "bg-green-100 text-green-800"
                               : "bg-red-100 text-red-800"
@@ -904,14 +1031,14 @@ export default function StatsPage() {
             )}
           </div>
 
-          <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
+          <div className="overflow-hidden rounded-[30px] bg-white p-5 shadow-sm ring-1 ring-black/10">
             <button
               type="button"
               onClick={() => setShowEventHistory((v) => !v)}
-              className="flex w-full items-center justify-between text-left"
+              className="flex w-full items-center justify-between gap-4 text-left active:scale-[0.99]"
             >
-              <div>
-                <h2 className="text-2xl font-bold">
+              <div className="min-w-0">
+                <h2 className="text-2xl font-black">
                   História seminárov a táborov
                 </h2>
                 <p className="text-sm text-black/50">
@@ -919,34 +1046,43 @@ export default function StatsPage() {
                 </p>
               </div>
 
-              <span className="rounded-xl bg-black px-4 py-2 text-sm font-bold text-white">
+              <span className="inline-flex shrink-0 items-center gap-2 rounded-2xl bg-[#111] px-4 py-3 text-sm font-black text-white">
                 {showEventHistory ? "Skryť" : "Rozbaliť"}
+                {showEventHistory ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
               </span>
             </button>
 
             {showEventHistory && (
               <div className="mt-5 space-y-4">
-                <input
-                  value={eventSearch}
-                  onChange={(e) => setEventSearch(e.target.value)}
-                  placeholder="Vyhľadať podľa dátumu, názvu, typu, témy, dojo..."
-                  className="w-full rounded-xl border px-4 py-3"
-                />
+                <div className="relative">
+                  <Search
+                    size={18}
+                    className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-black/35"
+                  />
+                  <input
+                    value={eventSearch}
+                    onChange={(e) => setEventSearch(e.target.value)}
+                    placeholder="Vyhľadať podľa dátumu, názvu, typu, témy, dojo..."
+                    className={`${inputClass} pl-11`}
+                  />
+                </div>
 
                 <div className="grid gap-3">
                   {filteredEventHistory.length === 0 ? (
-                    <p>Žiadna história seminárov alebo táborov pre tento filter.</p>
+                    <p className="rounded-2xl bg-[#f7f2e8] p-4 text-black/55">
+                      Žiadna história seminárov alebo táborov pre tento filter.
+                    </p>
                   ) : (
                     filteredEventHistory.map((item) => (
                       <div
                         key={item.id}
-                        className="flex items-center justify-between gap-4 rounded-2xl border border-black/10 p-4"
+                        className="flex min-w-0 flex-col gap-3 rounded-2xl bg-[#f7f2e8] p-4 sm:flex-row sm:items-center sm:justify-between"
                       >
-                        <div>
-                          <p className="font-bold">
+                        <div className="min-w-0">
+                          <p className="break-words font-black">
                             {item.event?.start_date} — {item.event?.name}
                           </p>
-                          <p className="text-black/60">
+                          <p className="break-words text-sm text-black/55">
                             {eventTypeLabels[item.event?.event_type] ||
                               item.event?.event_type}{" "}
                             · {item.event?.dojos?.name || "Bez dojo"} ·{" "}
@@ -955,7 +1091,7 @@ export default function StatsPage() {
                         </div>
 
                         <span
-                          className={`shrink-0 rounded-xl px-4 py-2 font-bold ${
+                          className={`w-fit shrink-0 rounded-2xl px-4 py-2 text-sm font-black ${
                             item.status === "present"
                               ? "bg-green-100 text-green-800"
                               : "bg-red-100 text-red-800"
@@ -973,8 +1109,9 @@ export default function StatsPage() {
 
           <Link
             href={`/students/${selectedStudent.id}`}
-            className="inline-flex w-full items-center justify-center rounded-2xl bg-[#d71920] px-4 py-4 text-center font-bold text-white shadow-[0_6px_14px_rgba(215,25,32,0.25)] active:scale-[0.98]"
+            className="inline-flex h-[58px] w-full items-center justify-center gap-2 rounded-2xl bg-[#d71920] px-4 text-center font-black text-white shadow-[0_8px_18px_rgba(215,25,32,0.25)] active:scale-[0.98]"
           >
+            <UserRound size={20} />
             Otvoriť profil cvičiaceho
           </Link>
         </>
