@@ -12,7 +12,6 @@ import {
   Phone,
   Save,
   ShieldAlert,
-  UserPlus,
   UserRound,
   Users,
 } from "lucide-react";
@@ -44,7 +43,6 @@ export default function NewStudentPage() {
 
   async function save(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-
     if (saving) return;
 
     const form = new FormData(e.currentTarget);
@@ -64,22 +62,12 @@ export default function NewStudentPage() {
       first_name: String(form.get("first_name") || "").trim(),
       last_name: String(form.get("last_name") || "").trim(),
       birth_year: form.get("birth_year") ? Number(form.get("birth_year")) : null,
-
       is_adult: isAdult,
-
-      parent_name: isAdult
-        ? null
-        : String(form.get("parent_name") || "").trim() || null,
-      parent_phone: isAdult
-        ? null
-        : String(form.get("parent_phone") || "").trim() || null,
-      parent_email: isAdult
-        ? null
-        : String(form.get("parent_email") || "").trim() || null,
-
+      parent_name: isAdult ? null : String(form.get("parent_name") || "").trim() || null,
+      parent_phone: isAdult ? null : String(form.get("parent_phone") || "").trim() || null,
+      parent_email: isAdult ? null : String(form.get("parent_email") || "").trim() || null,
       phone: isAdult ? String(form.get("phone") || "").trim() || null : null,
       email: isAdult ? String(form.get("email") || "").trim() || null : null,
-
       health_info: String(form.get("health_info") || "").trim() || null,
       medication_info: String(form.get("medication_info") || "").trim() || null,
       notes: String(form.get("notes") || "").trim() || null,
@@ -114,17 +102,17 @@ export default function NewStudentPage() {
   }
 
   const inputClass =
-    "h-[54px] w-full rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 text-[16px] font-bold outline-none focus:border-[#d71920] focus:bg-white";
+    "box-border h-[54px] w-full min-w-0 max-w-full rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 text-base font-bold outline-none focus:border-[#d71920] focus:bg-white";
 
   const textareaClass =
-    "min-h-[110px] w-full rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 py-3 text-[16px] font-semibold outline-none focus:border-[#d71920] focus:bg-white";
+    "box-border min-h-[110px] w-full min-w-0 max-w-full rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 py-3 text-base font-semibold outline-none focus:border-[#d71920] focus:bg-white";
 
   const labelClass = "mb-2 block text-sm font-black text-black/55";
 
   return (
-    <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40 space-y-6">
+    <div className="min-h-screen overflow-x-hidden bg-[#f7f2e8] px-4 py-6 pb-40 sm:px-5 space-y-6">
       <div className="overflow-hidden rounded-[32px] bg-[#111] text-white shadow-[0_18px_45px_rgba(0,0,0,0.25)]">
-        <div className="p-6">
+        <div className="min-w-0 p-6">
           <div
             className={`mb-5 flex h-14 w-14 items-center justify-center rounded-2xl ${
               isAdult ? "bg-green-600" : "bg-blue-600"
@@ -137,7 +125,7 @@ export default function NewStudentPage() {
             Nový cvičiaci
           </p>
 
-          <h1 className="mt-2 text-4xl font-black tracking-tight">
+          <h1 className="mt-2 break-words text-4xl font-black tracking-tight">
             Pridať žiaka
           </h1>
 
@@ -146,24 +134,24 @@ export default function NewStudentPage() {
             poznámky pre trénerov.
           </p>
 
-          <div className="mt-6 grid gap-3 md:grid-cols-3">
-            <div className="rounded-2xl bg-white/10 p-4">
+          <div className="mt-6 grid min-w-0 gap-3 md:grid-cols-3">
+            <div className="min-w-0 rounded-2xl bg-white/10 p-4">
               <p className="text-sm text-white/50">Typ</p>
-              <p className="text-2xl font-black">
+              <p className="truncate text-2xl font-black">
                 {isAdult ? "Dospelý" : "Dieťa"}
               </p>
             </div>
 
-            <div className="rounded-2xl bg-white/10 p-4">
+            <div className="min-w-0 rounded-2xl bg-white/10 p-4">
               <p className="text-sm text-white/50">Dojo</p>
               <p className="truncate text-2xl font-black">
                 {dojos.find((d) => d.id === selectedDojoId)?.name || "Nevybrané"}
               </p>
             </div>
 
-            <div className="rounded-2xl bg-white/10 p-4">
+            <div className="min-w-0 rounded-2xl bg-white/10 p-4">
               <p className="text-sm text-white/50">Stav</p>
-              <p className="text-2xl font-black">
+              <p className="truncate text-2xl font-black">
                 {saving ? "Ukladám..." : "Nový profil"}
               </p>
             </div>
@@ -173,16 +161,16 @@ export default function NewStudentPage() {
 
       <form
         onSubmit={save}
-        className="grid gap-6 rounded-[30px] bg-white p-5 shadow-sm ring-1 ring-black/10"
+        className="grid min-w-0 gap-6 overflow-hidden rounded-[30px] bg-white p-4 shadow-sm ring-1 ring-black/10 sm:p-5"
       >
-        <div>
+        <div className="min-w-0">
           <p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">
             Základné údaje
           </p>
-          <h2 className="text-2xl font-black">Cvičiaci</h2>
+          <h2 className="break-words text-2xl font-black">Cvičiaci</h2>
         </div>
 
-        <div>
+        <div className="min-w-0">
           <label className={labelClass}>
             <span className="inline-flex items-center gap-2">
               <MapPin size={17} />
@@ -206,11 +194,11 @@ export default function NewStudentPage() {
           </select>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 rounded-3xl bg-[#f7f2e8] p-2">
+        <div className="grid min-w-0 grid-cols-2 gap-2 rounded-3xl bg-[#f7f2e8] p-2">
           <button
             type="button"
             onClick={() => setIsAdult(false)}
-            className={`rounded-2xl px-4 py-4 font-black active:scale-[0.98] ${
+            className={`min-w-0 rounded-2xl px-3 py-4 font-black active:scale-[0.98] ${
               !isAdult ? "bg-blue-600 text-white" : "bg-white text-black"
             }`}
           >
@@ -220,7 +208,7 @@ export default function NewStudentPage() {
           <button
             type="button"
             onClick={() => setIsAdult(true)}
-            className={`rounded-2xl px-4 py-4 font-black active:scale-[0.98] ${
+            className={`min-w-0 rounded-2xl px-3 py-4 font-black active:scale-[0.98] ${
               isAdult ? "bg-green-600 text-white" : "bg-white text-black"
             }`}
           >
@@ -228,20 +216,15 @@ export default function NewStudentPage() {
           </button>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
+        <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+          <div className="min-w-0">
             <label className={labelClass}>
               {isAdult ? "Meno dospelého cvičiaceho" : "Meno dieťaťa"}
             </label>
-            <input
-              name="first_name"
-              required
-              placeholder="Meno"
-              className={inputClass}
-            />
+            <input name="first_name" required placeholder="Meno" className={inputClass} />
           </div>
 
-          <div>
+          <div className="min-w-0">
             <label className={labelClass}>
               {isAdult ? "Priezvisko dospelého cvičiaceho" : "Priezvisko dieťaťa"}
             </label>
@@ -254,7 +237,7 @@ export default function NewStudentPage() {
           </div>
         </div>
 
-        <div>
+        <div className="min-w-0">
           <label className={labelClass}>Rok narodenia</label>
           <input
             name="birth_year"
@@ -264,19 +247,19 @@ export default function NewStudentPage() {
           />
         </div>
 
-        <div className="rounded-[26px] bg-[#f7f2e8] p-4">
-          <div className="mb-4">
+        <div className="min-w-0 overflow-hidden rounded-[26px] bg-[#f7f2e8] p-4">
+          <div className="mb-4 min-w-0">
             <p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">
               Kontakt
             </p>
-            <h3 className="text-xl font-black">
+            <h3 className="break-words text-xl font-black">
               {isAdult ? "Kontakt cvičiaceho" : "Kontakt rodiča"}
             </h3>
           </div>
 
           {isAdult ? (
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
+            <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+              <div className="min-w-0">
                 <label className={labelClass}>
                   <span className="inline-flex items-center gap-2">
                     <Phone size={17} />
@@ -286,33 +269,24 @@ export default function NewStudentPage() {
                 <input name="phone" placeholder="Telefón" className={inputClass} />
               </div>
 
-              <div>
+              <div className="min-w-0">
                 <label className={labelClass}>
                   <span className="inline-flex items-center gap-2">
                     <Mail size={17} />
                     Email
                   </span>
                 </label>
-                <input
-                  name="email"
-                  type="email"
-                  placeholder="Email"
-                  className={inputClass}
-                />
+                <input name="email" type="email" placeholder="Email" className={inputClass} />
               </div>
             </div>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-3">
-              <div>
+            <div className="grid min-w-0 gap-4 sm:grid-cols-3">
+              <div className="min-w-0">
                 <label className={labelClass}>Meno rodiča</label>
-                <input
-                  name="parent_name"
-                  placeholder="Meno rodiča"
-                  className={inputClass}
-                />
+                <input name="parent_name" placeholder="Meno rodiča" className={inputClass} />
               </div>
 
-              <div>
+              <div className="min-w-0">
                 <label className={labelClass}>
                   <span className="inline-flex items-center gap-2">
                     <Phone size={17} />
@@ -326,7 +300,7 @@ export default function NewStudentPage() {
                 />
               </div>
 
-              <div>
+              <div className="min-w-0">
                 <label className={labelClass}>
                   <span className="inline-flex items-center gap-2">
                     <Mail size={17} />
@@ -344,16 +318,16 @@ export default function NewStudentPage() {
           )}
         </div>
 
-        <div className="rounded-[26px] bg-[#f7f2e8] p-4">
-          <div className="mb-4">
+        <div className="min-w-0 overflow-hidden rounded-[26px] bg-[#f7f2e8] p-4">
+          <div className="mb-4 min-w-0">
             <p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">
               Technický stupeň
             </p>
-            <h3 className="text-xl font-black">Páskovanie / skúšky</h3>
+            <h3 className="break-words text-xl font-black">Páskovanie / skúšky</h3>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div>
+          <div className="grid min-w-0 gap-4 sm:grid-cols-3">
+            <div className="min-w-0">
               <label className={labelClass}>Typ stupňa</label>
               <select name="grade_system" className={inputClass}>
                 <option value="">Typ stupňa</option>
@@ -362,7 +336,7 @@ export default function NewStudentPage() {
               </select>
             </div>
 
-            <div>
+            <div className="min-w-0">
               <label className={labelClass}>
                 <span className="inline-flex items-center gap-2">
                   <GraduationCap size={17} />
@@ -379,7 +353,7 @@ export default function NewStudentPage() {
               </select>
             </div>
 
-            <div>
+            <div className="min-w-0">
               <label className={labelClass}>
                 <span className="inline-flex items-center gap-2">
                   <CalendarDays size={17} />
@@ -391,15 +365,15 @@ export default function NewStudentPage() {
           </div>
         </div>
 
-        <div className="rounded-[26px] bg-[#f7f2e8] p-4 space-y-4">
-          <div>
+        <div className="min-w-0 space-y-4 overflow-hidden rounded-[26px] bg-[#f7f2e8] p-4">
+          <div className="min-w-0">
             <p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">
               Bezpečnosť a poznámky
             </p>
-            <h3 className="text-xl font-black">Zdravie, lieky, poznámky</h3>
+            <h3 className="break-words text-xl font-black">Zdravie, lieky, poznámky</h3>
           </div>
 
-          <div>
+          <div className="min-w-0">
             <label className={labelClass}>
               <span className="inline-flex items-center gap-2">
                 <HeartPulse size={17} />
@@ -414,7 +388,7 @@ export default function NewStudentPage() {
             />
           </div>
 
-          <div>
+          <div className="min-w-0">
             <label className={labelClass}>
               <span className="inline-flex items-center gap-2">
                 <ShieldAlert size={17} />
@@ -429,7 +403,7 @@ export default function NewStudentPage() {
             />
           </div>
 
-          <div>
+          <div className="min-w-0">
             <label className={labelClass}>Poznámka</label>
             <textarea
               name="notes"
@@ -440,10 +414,10 @@ export default function NewStudentPage() {
           </div>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid min-w-0 gap-3 md:grid-cols-2">
           <button
             disabled={saving}
-            className="inline-flex h-[58px] items-center justify-center gap-2 rounded-2xl bg-[#d71920] px-4 font-black text-white shadow-[0_8px_18px_rgba(215,25,32,0.25)] active:scale-[0.98] disabled:opacity-60"
+            className="inline-flex h-[58px] min-w-0 items-center justify-center gap-2 rounded-2xl bg-[#d71920] px-4 font-black text-white shadow-[0_8px_18px_rgba(215,25,32,0.25)] active:scale-[0.98] disabled:opacity-60"
           >
             <Save size={20} />
             {saving ? "Ukladám..." : "Uložiť žiaka"}
@@ -451,7 +425,7 @@ export default function NewStudentPage() {
 
           <Link
             href="/students"
-            className="inline-flex h-[58px] items-center justify-center gap-2 rounded-2xl bg-black/10 px-4 font-black text-black active:scale-[0.98]"
+            className="inline-flex h-[58px] min-w-0 items-center justify-center gap-2 rounded-2xl bg-black/10 px-4 font-black text-black active:scale-[0.98]"
           >
             <ArrowLeft size={18} />
             Späť na žiakov
