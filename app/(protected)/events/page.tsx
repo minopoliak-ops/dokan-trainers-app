@@ -1,247 +1,461 @@
 "use client";
 
-import { createClient } from "@/lib/supabase/browser";
 import { usePermissions } from "@/lib/usePermissions";
-import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
+import { createClient } from "@/lib/supabase/browser";
+import {
+Check,
+ClipboardCheck,
+Plus,
+Search,
+Trash2,
+Trophy,
+UserPlus,
+Users,
+X,
+} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
-export default function EventsPage() {
-  const { permissions, dojoIds } = usePermissions();
+type Status = "present" | "absent" | null;
 
-  const [events, setEvents] = useState<any[]>([]);
-  const [dojos, setDojos] = useState<any[]>([]);
-  const [topics, setTopics] = useState<any[]>([]);
-  const [trainers, setTrainers] = useState<any[]>([]);
+export default function EventDetailPage({ params }: { params: { id: string } }) {
+const { permissions } = usePermissions();
 
-  const isAdmin = !!permissions?.can_manage_trainers;
+const [event, setEvent] = useState<any>(null);
+const [students, setStudents] = useState<any[]>([]);
+const [attendance, setAttendance] = useState<any[]>([]);
+const [external, setExternal] = useState<any[]>([]);
 
-  async function loadData() {
-    if (!permissions) return;
+const [selectedStudentId, setSelectedStudentId] = useState("");
+const [extFirst, setExtFirst] = useState("");
+const [extLast, setExtLast] = useState("");
+const [search, setSearch] = useState("");
+const [loading, setLoading] = useState(true);
 
-    const supabase = createClient();
+const canWriteAttendance =
+!!permissions?.can_attendance || !!permissions?.can_manage_trainers;
 
-    let eventsQuery = supabase
-      .from("events")
-      .select("*, dojos(name), trainers(full_name), training_topics(name)")
-      .order("start_date", { ascending: false });
+const canDelete =
+!!permissions?.can_delete_students || !!permissions?.can_manage_trainers;
 
-    let dojosQuery = supabase.from("dojos").select("*").order("name");
+async function loadData() {
+setLoading(true);
 
-    if (!isAdmin) {
-      if (dojoIds.length === 0) {
-        setEvents([]);
-        setDojos([]);
-        return;
-      }
+const supabase = createClient();
 
-      eventsQuery = eventsQuery.in("dojo_id", dojoIds);
-      dojosQuery = dojosQuery.in("id", dojoIds);
-    }
+const [eventRes, studentsRes, attendanceRes, externalRes] =
+await Promise.all([
+supabase
+.from("events")
+.select("*, dojos(name), trainers(full_name), training_topics(name)")
+.eq("id", params.id)
+.single(),
 
-    const [eventsRes, dojosRes, topicsRes, trainersRes] = await Promise.all([
-      eventsQuery,
-      dojosQuery,
-      supabase.from("training_topics").select("*").order("name"),
-      supabase.from("trainers").select("*").order("full_name"),
-    ]);
+supabase
+.from("students")
+.select("*, dojos(name)")
+.eq("active", true)
+.order("last_name"),
 
-    if (eventsRes.error) console.error(eventsRes.error);
-    if (dojosRes.error) console.error(dojosRes.error);
-    if (topicsRes.error) console.error(topicsRes.error);
-    if (trainersRes.error) console.error(trainersRes.error);
+supabase
+.from("event_attendance")
+.select("*, students(first_name, last_name, technical_grade, dojos(name))")
+.eq("event_id", params.id),
 
-    setEvents(eventsRes.data || []);
-    setDojos(dojosRes.data || []);
-    setTopics(topicsRes.data || []);
-    setTrainers(trainersRes.data || []);
-  }
+supabase
+.from("event_external_participants")
+.select("*")
+.eq("event_id", params.id)
+.order("created_at"),
+]);
 
-  useEffect(() => {
-    loadData();
-  }, [permissions, dojoIds]);
+if (eventRes.error) alert(eventRes.error.message);
+if (studentsRes.error) alert(studentsRes.error.message);
+if (attendanceRes.error) alert(attendanceRes.error.message);
+if (externalRes.error) alert(externalRes.error.message);
 
-  async function addEvent(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+setEvent(eventRes.data);
+setStudents(studentsRes.data || []);
+setAttendance(attendanceRes.data || []);
+setExternal(externalRes.data || []);
+setLoading(false);
+}
 
-    const formElement = e.currentTarget;
-    const form = new FormData(formElement);
-    const dojoId = String(form.get("dojo_id") || "");
+useEffect(() => {
+loadData();
+}, [params.id]);
 
-    if (!isAdmin && !dojoIds.includes(dojoId)) {
-      alert("Nemáš oprávnenie vytvárať akciu pre toto dojo.");
-      return;
-    }
+async function addStudent() {
+if (!canWriteAttendance) {
+alert("Nemáš oprávnenie zapisovať prezenčku.");
+return;
+}
 
-    const supabase = createClient();
+if (!selectedStudentId) return alert("Vyber cvičiaceho.");
 
-    const { error } = await supabase.from("events").insert({
-      name: form.get("name"),
-      event_type: form.get("type"),
-      start_date: form.get("start_date"),
-      end_date: form.get("end_date") || null,
-      dojo_id: dojoId || null,
-      topic_id: form.get("topic_id") || null,
-      trainer_id: form.get("trainer_id") || null,
-    });
+const supabase = createClient();
 
-    if (error) return alert(error.message);
+const { error } = await supabase.from("event_attendance").upsert(
+{
+event_id: params.id,
+student_id: selectedStudentId,
+status: "present",
+},
+{ onConflict: "event_id,student_id" }
+);
 
-    formElement.reset();
-    loadData();
-  }
+if (error) return alert(error.message);
 
-  async function deleteEvent(id: string) {
-    if (!isAdmin) {
-      alert("Nemáš oprávnenie mazať akcie.");
-      return;
-    }
+setSelectedStudentId("");
+loadData();
+}
 
-    if (!confirm("Vymazať akciu?")) return;
+async function cycleStatus(row: any) {
+if (!canWriteAttendance) {
+alert("Nemáš oprávnenie meniť prezenčku.");
+return;
+}
 
-    const supabase = createClient();
-    await supabase.from("events").delete().eq("id", id);
-    loadData();
-  }
+const supabase = createClient();
+const current: Status = row.status || null;
 
-  const inputClass =
-    "box-border h-[52px] w-full max-w-full min-w-0 appearance-none rounded-2xl border border-black/10 bg-[#fafafa] px-4 text-[16px] outline-none transition focus:border-[#d71920] focus:bg-white";
+if (current === "present") {
+const { error } = await supabase
+.from("event_attendance")
+.update({ status: "absent" })
+.eq("id", row.id);
 
-  return (
-    <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40 space-y-6 overflow-x-hidden">
-      <div className="rounded-[28px] bg-[#111111] p-6 text-white shadow-[0_10px_30px_rgba(0,0,0,0.25)]">
-        <h1 className="text-3xl font-extrabold tracking-tight">
-          Semináre a akcie
-        </h1>
-        {!isAdmin && (
-          <p className="mt-2 text-sm text-white/70">
-            Zobrazuješ iba akcie pre svoje priradené dojo.
-          </p>
-        )}
-      </div>
+if (error) return alert(error.message);
+}
 
-      {(isAdmin || permissions?.can_create_trainings) && (
-        <form
-          onSubmit={addEvent}
-          className="grid grid-cols-1 gap-3 overflow-hidden rounded-[26px] bg-white p-5 shadow-[0_8px_20px_rgba(0,0,0,0.08)] ring-1 ring-black/5"
-        >
-          <input
-            name="name"
-            placeholder="Názov akcie"
-            className={inputClass}
-            required
-          />
+if (current === "absent") {
+const { error } = await supabase
+.from("event_attendance")
+.delete()
+.eq("id", row.id);
 
-          <select name="type" className={inputClass}>
-            <option value="kids_seminar">Detský seminár</option>
-            <option value="older_seminar">Seminár pre starších</option>
-            <option value="day_camp">Denný tábor</option>
-            <option value="sleepover_camp_1">Prespávací tábor 1</option>
-            <option value="sleepover_camp_2">Prespávací tábor 2</option>
-            <option value="training">Tréning</option>
-          </select>
+if (error) return alert(error.message);
+}
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1">
-              <span className="text-xs text-black/50">Dátum od</span>
-              <input
-                type="date"
-                name="start_date"
-                className={inputClass}
-                required
-              />
-            </div>
+if (!current) {
+const { error } = await supabase
+.from("event_attendance")
+.update({ status: "present" })
+.eq("id", row.id);
 
-            <div className="flex flex-col gap-1">
-              <span className="text-xs text-black/50">Dátum do</span>
-              <input type="date" name="end_date" className={inputClass} />
-            </div>
-          </div>
+const availableStudents = useMemo(() => {
+const q = search.toLowerCase().trim();
 
-          <select name="dojo_id" className={inputClass} required>
-            <option value="">Dojo</option>
-            {dojos.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name}
-              </option>
-            ))}
-          </select>
+return students
+.filter((s) => !alreadyAddedIds.includes(s.id))
+.filter((s) => {
+if (!q) return true;
 
-          <select name="topic_id" className={inputClass}>
-            <option value="">Téma</option>
-            {topics.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
+return [
+s.first_name,
+s.last_name,
+s.dojos?.name,
+s.technical_grade,
+]
+.filter(Boolean)
+.join(" ")
+.toLowerCase()
+.includes(q);
+});
+}, [students, alreadyAddedIds, search]);
 
-          <select name="trainer_id" className={inputClass}>
-            <option value="">Tréner</option>
-            {trainers.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.full_name}
-              </option>
-            ))}
-          </select>
+const presentRegistered = attendance.filter((a) => a.status === "present").length;
+const absentRegistered = attendance.filter((a) => a.status === "absent").length;
+const presentExternal = external.filter((a) => a.status === "present").length;
+const absentExternal = external.filter((a) => a.status === "absent").length;
 
-          <button className="h-[54px] w-full rounded-2xl bg-[#d71920] px-4 text-[16px] font-bold text-white shadow-[0_6px_14px_rgba(215,25,32,0.25)] active:scale-[0.98]">
-            + Vytvoriť akciu
-          </button>
-        </form>
-      )}
+const totalPresent = presentRegistered + presentExternal;
+const totalAbsent = absentRegistered + absentExternal;
+const totalPeople = attendance.length + external.length;
 
-      <div className="rounded-[26px] bg-white p-5 shadow-[0_8px_20px_rgba(0,0,0,0.08)] ring-1 ring-black/5">
-        <h2 className="mb-4 text-2xl font-extrabold tracking-tight">
-          Zoznam akcií
-        </h2>
+const inputClass =
+"h-[56px] w-full min-w-0 rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 text-[16px] font-bold outline-none focus:border-[#d71920] focus:bg-white";
 
-        {events.length === 0 ? (
-          <p className="rounded-2xl bg-[#f7f2e8] p-5 text-center text-black/60">
-            Zatiaľ nemáš žiadne akcie.
-          </p>
-        ) : (
-          <div className="grid gap-3">
-            {events.map((event) => (
-              <div
-                key={event.id}
-                className="rounded-2xl border border-black/10 bg-white p-4"
-              >
-                <p className="text-lg font-extrabold text-[#111]">
-                  {event.name}
-                </p>
+const buttonRed =
+"inline-flex h-[56px] w-full items-center justify-center gap-2 rounded-2xl bg-[#d71920] px-4 font-black text-white shadow-[0_8px_18px_rgba(215,25,32,0.25)] active:scale-[0.98]";
 
-                <p className="mt-2 text-sm text-black/60">
-                  {event.start_date}
-                  {event.end_date && ` – ${event.end_date}`}
-                </p>
+if (loading || !event) {
+return (
+<div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40">
+<div className="rounded-3xl bg-white p-6 text-center font-bold text-black/55 shadow-sm">
+Načítavam akciu...
+</div>
+</div>
+);
+}
 
-                <p className="mt-1 text-sm text-black/60">
-                  {event.dojos?.name || "Bez dojo"} ·{" "}
-                  {event.training_topics?.name || "Bez témy"}
-                </p>
+return (
+<div className="min-h-screen overflow-x-hidden bg-[#f7f2e8] px-4 py-6 pb-40 sm:px-5 space-y-6">
+<div className="overflow-hidden rounded-[32px] bg-[#111] text-white shadow-[0_18px_45px_rgba(0,0,0,0.25)]">
+<div className="p-6">
+<div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#d71920]">
+<Trophy size={28} />
+</div>
 
-                <div className={`mt-4 grid gap-2 ${isAdmin ? "grid-cols-2" : "grid-cols-1"}`}>
-                  <Link
-                    href={`/events/${event.id}`}
-                    className="inline-flex h-11 items-center justify-center rounded-2xl bg-black px-4 font-bold text-white active:scale-[0.98]"
-                  >
-                    Detail
-                  </Link>
+<p className="text-sm font-bold uppercase tracking-[0.18em] text-white/45">
+Prezenčka akcie
+</p>
 
-                  {isAdmin && (
-                    <button
-                      onClick={() => deleteEvent(event.id)}
-                      className="h-11 rounded-2xl bg-[#d71920] px-4 font-bold text-white active:scale-[0.98]"
-                    >
-                      Vymazať
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
+<h1 className="mt-2 break-words text-4xl font-black tracking-tight">
+{event.name}
+</h1>
+
+<p className="mt-3 break-words text-sm text-white/70">
+{event.start_date}
+{event.end_date ? ` – ${event.end_date}` : ""} ·{" "}
+{event.dojos?.name || "Bez dojo"}
+</p>
+
+<p className="mt-1 break-words text-sm text-white/70">
+Tréner: {event.trainers?.full_name || "-"} · Téma:{" "}
+{event.training_topics?.name || "Bez témy"}
+</p>
+
+<div className="mt-6 grid gap-3 md:grid-cols-4">
+<div className="rounded-2xl bg-white/10 p-4">
+<p className="text-sm text-white/50">Spolu</p>
+<p className="text-3xl font-black">{totalPeople}</p>
+</div>
+
+<div className="rounded-2xl bg-white/10 p-4">
+<p className="text-sm text-white/50">Prítomní</p>
+<p className="text-3xl font-black text-green-300">{totalPresent}</p>
+</div>
+
+<div className="rounded-2xl bg-white/10 p-4">
+<p className="text-sm text-white/50">Neprítomní</p>
+<p className="text-3xl font-black text-red-300">{totalAbsent}</p>
+</div>
+
+<div className="rounded-2xl bg-white/10 p-4">
+<p className="text-sm text-white/50">Externí</p>
+<p className="text-3xl font-black">{external.length}</p>
+</div>
+</div>
+</div>
+</div>
+
+{canWriteAttendance && (
+<div className="grid gap-4 lg:grid-cols-2">
+<div className="overflow-hidden rounded-[30px] bg-white p-5 shadow-sm ring-1 ring-black/10">
+<div className="mb-4 flex items-center gap-3">
+<div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#f7f2e8] text-[#d71920]">
+<Users />
+</div>
+
+<div className="min-w-0">
+<p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">
+Registrovaný žiak
+</p>
+<h2 className="text-2xl font-black">Pridať do prezenčky</h2>
+</div>
+</div>
+
+<div className="relative mb-3">
+<Search
+size={18}
+className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-black/35"
+/>
+<input
+value={search}
+onChange={(e) => setSearch(e.target.value)}
+placeholder="Hľadaj meno, dojo alebo stupeň..."
+className={`${inputClass} pl-11`}
+/>
+</div>
+
+<select
+value={selectedStudentId}
+onChange={(e) => setSelectedStudentId(e.target.value)}
+className={inputClass}
+>
+<option value="">Vyber cvičiaceho</option>
+{availableStudents.map((student) => (
+<option key={student.id} value={student.id}>
+{student.last_name} {student.first_name} — {student.dojos?.name}
+</option>
+))}
+</select>
+
+<button onClick={addStudent} className={`${buttonRed} mt-3`}>
+<Plus size={20} />
+Pridať registrovaného
+</button>
+</div>
+
+<div className="overflow-hidden rounded-[30px] bg-white p-5 shadow-sm ring-1 ring-black/10">
+<div className="mb-4 flex items-center gap-3">
+<div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#111] text-white">
+<UserPlus />
+</div>
+
+<div className="min-w-0">
+<p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">
+Externý účastník
+</p>
+<h2 className="text-2xl font-black">Pridať hosťa</h2>
+</div>
+</div>
+
+<div className="grid gap-3 sm:grid-cols-2">
+<input
+placeholder="Meno"
+value={extFirst}
+onChange={(e) => setExtFirst(e.target.value)}
+className={inputClass}
+/>
+
+<input
+placeholder="Priezvisko"
+value={extLast}
+onChange={(e) => setExtLast(e.target.value)}
+className={inputClass}
+/>
+</div>
+
+<button onClick={addExternal} className={`${buttonRed} mt-3`}>
+<Plus size={20} />
+Pridať externého
+</button>
+</div>
+</div>
+)}
+
+<div className="overflow-hidden rounded-[30px] bg-white p-5 shadow-sm ring-1 ring-black/10">
+<div className="mb-4 flex items-center gap-3">
+<div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-green-100 text-green-800">
+<ClipboardCheck />
+</div>
+
+<div className="min-w-0">
+<p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">
+Prezenčka
+</p>
+<h2 className="text-2xl font-black">Registrovaní účastníci</h2>
+</div>
+</div>
+
+{attendance.length === 0 ? (
+<p className="rounded-2xl bg-[#f7f2e8] p-5 text-center text-sm font-bold text-black/55">
+Zatiaľ nie sú pridaní žiadni registrovaní žiaci.
+</p>
+) : (
+<div className="grid gap-3">
+{attendance.map((row) => {
+const status = row.status as Status;
+
+return (
+<div
+key={row.id}
+className="flex min-w-0 flex-col gap-3 rounded-2xl bg-[#f7f2e8] p-4 sm:flex-row sm:items-center sm:justify-between"
+>
+<div className="min-w-0">
+<p className="break-words text-lg font-black">
+{row.students?.first_name} {row.students?.last_name}
+</p>
+<p className="break-words text-sm text-black/55">
+{row.students?.technical_grade || "Bez stupňa"} ·{" "}
+{row.students?.dojos?.name || "Bez dojo"}
+</p>
+</div>
+
+<div className="flex shrink-0 gap-2">
+{canWriteAttendance && (
+<button
+onClick={() => cycleStatus(row)}
+className={`flex h-12 min-w-12 items-center justify-center rounded-2xl px-4 font-black text-white active:scale-[0.96] ${
+status === "present"
+? "bg-green-600"
+: status === "absent"
+? "bg-red-600"
+: "bg-black/30"
+}`}
+>
+{status === "present" && <Check size={20} />}
+{status === "absent" && <X size={20} />}
+{!status && "?"}
+</button>
+)}
+
+{canDelete && (
+<button
+onClick={() => removeStudent(row.id)}
+className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-black active:scale-[0.96]"
+>
+<Trash2 size={20} />
+</button>
+)}
+</div>
+</div>
+);
+})}
+</div>
+)}
+</div>
+
+<div className="overflow-hidden rounded-[30px] bg-white p-5 shadow-sm ring-1 ring-black/10">
+<div className="mb-4 flex items-center gap-3">
+<div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#f7f2e8] text-[#d71920]">
+<UserPlus />
+</div>
+
+<div className="min-w-0">
+<p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">
+Hostia
+</p>
+<h2 className="text-2xl font-black">Externí účastníci</h2>
+</div>
+</div>
+
+{external.length === 0 ? (
+<p className="rounded-2xl bg-[#f7f2e8] p-5 text-center text-sm font-bold text-black/55">
+Zatiaľ nie sú pridaní žiadni externí účastníci.
+</p>
+) : (
+<div className="grid gap-3">
+{external.map((row) => (
+<div
+key={row.id}
+className="flex min-w-0 flex-col gap-3 rounded-2xl bg-[#f7f2e8] p-4 sm:flex-row sm:items-center sm:justify-between"
+>
+<div className="min-w-0">
+<p className="break-words text-lg font-black">
+{row.first_name} {row.last_name}
+</p>
+<p className="text-sm text-black/55">Externý účastník</p>
+</div>
+
+<div className="flex shrink-0 gap-2">
+{canWriteAttendance && (
+<button
+onClick={() => toggleExternal(row)}
+className={`flex h-12 min-w-12 items-center justify-center rounded-2xl px-4 font-black text-white active:scale-[0.96] ${
+row.status === "present" ? "bg-green-600" : "bg-red-600"
+}`}
+>
+{row.status === "present" ? <Check size={20} /> : <X size={20} />}
+</button>
+)}
+
+{canDelete && (
+<button
+onClick={() => deleteExternal(row.id)}
+className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-black active:scale-[0.96]"
+
+>
+<Trash2 size={20} />
+</button>
+)}
+</div>
+</div>
+))}
+</div>
+)}
+</div>
+</div>
+);
 }
