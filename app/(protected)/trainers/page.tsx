@@ -8,7 +8,6 @@ import {
   ShieldCheck,
   Trash2,
   UserPlus,
-  Users,
   X,
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
@@ -47,9 +46,69 @@ const roleLabels: Record<string, string> = {
 };
 
 function roleBadge(role: string) {
-  if (role === "sensei") return "bg-[#111] text-white";
+  if (role === "sensei") {
+    return "bg-gradient-to-r from-yellow-300 via-amber-400 to-orange-500 text-black shadow-[0_6px_18px_rgba(245,158,11,0.35)]";
+  }
+
   if (role === "senpai") return "bg-[#d71920] text-white";
+
   return "bg-amber-100 text-amber-900";
+}
+
+function getDefaultsForRole(role: string) {
+  if (role === "sensei") {
+    return {
+      visible_menu: menus.map(([key]) => key),
+      can_manage_trainers: true,
+      can_attendance: true,
+      can_add_students: true,
+      can_delete_students: true,
+      can_create_trainings: true,
+      can_view_health: true,
+      can_manage_topics: true,
+      can_view_stats: true,
+      can_send_emails: true,
+    };
+  }
+
+  if (role === "senpai") {
+    return {
+      visible_menu: [
+        "dashboard",
+        "dojo",
+        "students",
+        "trainings",
+        "events",
+        "topics",
+        "stats",
+        "chat",
+        "notes",
+        "more",
+      ],
+      can_manage_trainers: false,
+      can_attendance: true,
+      can_add_students: true,
+      can_delete_students: false,
+      can_create_trainings: true,
+      can_view_health: false,
+      can_manage_topics: true,
+      can_view_stats: true,
+      can_send_emails: false,
+    };
+  }
+
+  return {
+    visible_menu: ["dashboard", "dojo", "students", "trainings", "chat", "more"],
+    can_manage_trainers: false,
+    can_attendance: true,
+    can_add_students: false,
+    can_delete_students: false,
+    can_create_trainings: false,
+    can_view_health: false,
+    can_manage_topics: false,
+    can_view_stats: false,
+    can_send_emails: false,
+  };
 }
 
 export default function TrainersPage() {
@@ -123,13 +182,16 @@ export default function TrainersPage() {
     const form = new FormData(formElement);
     const supabase = createClient();
 
+    const role = String(form.get("role") || "senpai");
+    const defaults = getDefaultsForRole(role);
+
     const { error } = await supabase.from("trainers").insert({
       full_name: String(form.get("full_name") || "").trim(),
       email: String(form.get("email") || "").trim(),
       phone: String(form.get("phone") || "").trim() || null,
-      role: String(form.get("role") || "senpai"),
+      role,
       active: true,
-      visible_menu: ["dashboard", "dojo", "more"],
+      ...defaults,
     });
 
     if (error) return alert(error.message);
@@ -140,10 +202,14 @@ export default function TrainersPage() {
 
   async function updateTrainerRole(trainerId: string, role: string) {
     const supabase = createClient();
+    const defaults = getDefaultsForRole(role);
 
     const { error } = await supabase
       .from("trainers")
-      .update({ role })
+      .update({
+        role,
+        ...defaults,
+      })
       .eq("id", trainerId);
 
     if (error) return alert(error.message);
@@ -323,7 +389,7 @@ export default function TrainersPage() {
 
       <div className="grid gap-4 md:grid-cols-3">
         <div className="rounded-[28px] bg-white p-5 shadow-sm ring-1 ring-black/10">
-          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#111] text-white">
+          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-r from-yellow-300 via-amber-400 to-orange-500 text-black">
             <Crown />
           </div>
           <h2 className="text-xl font-black">Sensei</h2>
