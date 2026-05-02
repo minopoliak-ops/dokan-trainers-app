@@ -2,65 +2,90 @@
 
 import { gradeOptions } from "@/lib/grades";
 import { createClient } from "@/lib/supabase/browser";
-import { useRouter } from "next/navigation";
+import {
+  ArrowLeft,
+  CalendarDays,
+  GraduationCap,
+  HeartPulse,
+  Mail,
+  MapPin,
+  Phone,
+  Save,
+  ShieldAlert,
+  UserPlus,
+  UserRound,
+  Users,
+} from "lucide-react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 
 export default function NewStudentPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+
   const [dojos, setDojos] = useState<any[]>([]);
   const [isAdult, setIsAdult] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [selectedDojoId, setSelectedDojoId] = useState("");
 
   useEffect(() => {
+    const dojoFromUrl = searchParams.get("dojo");
+    if (dojoFromUrl) setSelectedDojoId(dojoFromUrl);
+
     const supabase = createClient();
+
     supabase
       .from("dojos")
       .select("*")
       .order("name")
       .then(({ data }) => setDojos(data || []));
-  }, []);
+  }, [searchParams]);
 
   async function save(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+
+    if (saving) return;
+
     const form = new FormData(e.currentTarget);
     const supabase = createClient();
 
+    const dojoId = String(form.get("dojo_id") || "");
+    const technicalGrade = String(form.get("technical_grade") || "");
+    const gradeSystem = String(form.get("grade_system") || "");
+    const gradingDate = String(form.get("last_grading_date") || "");
+
+    if (!dojoId) return alert("Vyber dojo.");
+
+    setSaving(true);
+
     const payload = {
-      dojo_id: String(form.get("dojo_id") || ""),
+      dojo_id: dojoId,
       first_name: String(form.get("first_name") || "").trim(),
       last_name: String(form.get("last_name") || "").trim(),
-      birth_year: form.get("birth_year")
-        ? Number(form.get("birth_year"))
-        : null,
+      birth_year: form.get("birth_year") ? Number(form.get("birth_year")) : null,
 
-      // 👇 KĽÚČOVÉ
       is_adult: isAdult,
 
-      // 👇 dospelý vs dieťa
       parent_name: isAdult
         ? null
-        : String(form.get("parent_name") || "") || null,
+        : String(form.get("parent_name") || "").trim() || null,
       parent_phone: isAdult
         ? null
-        : String(form.get("parent_phone") || "") || null,
+        : String(form.get("parent_phone") || "").trim() || null,
       parent_email: isAdult
         ? null
-        : String(form.get("parent_email") || "") || null,
+        : String(form.get("parent_email") || "").trim() || null,
 
-      // 👇 dospelý má vlastný kontakt
-      phone: isAdult
-        ? String(form.get("phone") || "") || null
-        : null,
-      email: isAdult
-        ? String(form.get("email") || "") || null
-        : null,
+      phone: isAdult ? String(form.get("phone") || "").trim() || null : null,
+      email: isAdult ? String(form.get("email") || "").trim() || null : null,
 
-      health_info: String(form.get("health_info") || "") || null,
-      medication_info: String(form.get("medication_info") || "") || null,
-      notes: String(form.get("notes") || "") || null,
-      grade_system: String(form.get("grade_system") || "") || null,
-      technical_grade: String(form.get("technical_grade") || "") || null,
-      last_grading_date:
-        String(form.get("last_grading_date") || "") || null,
+      health_info: String(form.get("health_info") || "").trim() || null,
+      medication_info: String(form.get("medication_info") || "").trim() || null,
+      notes: String(form.get("notes") || "").trim() || null,
+      grade_system: gradeSystem || null,
+      technical_grade: technicalGrade || null,
+      last_grading_date: gradingDate || null,
       active: true,
     };
 
@@ -70,53 +95,123 @@ export default function NewStudentPage() {
       .select("id")
       .single();
 
-    if (error) return alert(error.message);
+    if (error) {
+      setSaving(false);
+      return alert(error.message);
+    }
 
-    if (payload.technical_grade) {
+    if (technicalGrade) {
       await supabase.from("student_grade_history").insert({
         student_id: student.id,
-        grade_system: payload.grade_system,
-        technical_grade: payload.technical_grade,
-        grading_date: payload.last_grading_date,
+        grade_system: gradeSystem || null,
+        technical_grade: technicalGrade,
+        grading_date: gradingDate || null,
       });
     }
 
-    router.push("/students");
+    setSaving(false);
+    router.push(`/students/${student.id}`);
   }
 
+  const inputClass =
+    "h-[54px] w-full rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 text-[16px] font-bold outline-none focus:border-[#d71920] focus:bg-white";
+
+  const textareaClass =
+    "min-h-[110px] w-full rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 py-3 text-[16px] font-semibold outline-none focus:border-[#d71920] focus:bg-white";
+
+  const labelClass = "mb-2 block text-sm font-black text-black/55";
+
   return (
-    <div>
-      <div className="mb-6 rounded-3xl bg-brand-black p-6 text-white">
-        <h1 className="text-3xl font-bold">Pridať žiaka</h1>
+    <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40 space-y-6">
+      <div className="overflow-hidden rounded-[32px] bg-[#111] text-white shadow-[0_18px_45px_rgba(0,0,0,0.25)]">
+        <div className="p-6">
+          <div
+            className={`mb-5 flex h-14 w-14 items-center justify-center rounded-2xl ${
+              isAdult ? "bg-green-600" : "bg-blue-600"
+            }`}
+          >
+            {isAdult ? <UserRound size={28} /> : <Users size={28} />}
+          </div>
+
+          <p className="text-sm font-bold uppercase tracking-[0.18em] text-white/45">
+            Nový cvičiaci
+          </p>
+
+          <h1 className="mt-2 text-4xl font-black tracking-tight">
+            Pridať žiaka
+          </h1>
+
+          <p className="mt-3 max-w-2xl text-white/65">
+            Vytvor profil cvičiaceho, priraď dojo, kontakt, technický stupeň a
+            poznámky pre trénerov.
+          </p>
+
+          <div className="mt-6 grid gap-3 md:grid-cols-3">
+            <div className="rounded-2xl bg-white/10 p-4">
+              <p className="text-sm text-white/50">Typ</p>
+              <p className="text-2xl font-black">
+                {isAdult ? "Dospelý" : "Dieťa"}
+              </p>
+            </div>
+
+            <div className="rounded-2xl bg-white/10 p-4">
+              <p className="text-sm text-white/50">Dojo</p>
+              <p className="truncate text-2xl font-black">
+                {dojos.find((d) => d.id === selectedDojoId)?.name || "Nevybrané"}
+              </p>
+            </div>
+
+            <div className="rounded-2xl bg-white/10 p-4">
+              <p className="text-sm text-white/50">Stav</p>
+              <p className="text-2xl font-black">
+                {saving ? "Ukladám..." : "Nový profil"}
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
 
       <form
         onSubmit={save}
-        className="grid gap-4 rounded-3xl bg-white p-6 shadow-sm"
+        className="grid gap-6 rounded-[30px] bg-white p-5 shadow-sm ring-1 ring-black/10"
       >
-        {/* DOJO */}
-        <select
-          name="dojo_id"
-          required
-          className="rounded-xl border px-4 py-3"
-        >
-          <option value="">Vyber dojo</option>
-          {dojos.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.name}
-            </option>
-          ))}
-        </select>
+        <div>
+          <p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">
+            Základné údaje
+          </p>
+          <h2 className="text-2xl font-black">Cvičiaci</h2>
+        </div>
 
-        {/* TYP */}
-        <div className="flex gap-2">
+        <div>
+          <label className={labelClass}>
+            <span className="inline-flex items-center gap-2">
+              <MapPin size={17} />
+              Dojo
+            </span>
+          </label>
+
+          <select
+            name="dojo_id"
+            required
+            value={selectedDojoId}
+            onChange={(e) => setSelectedDojoId(e.target.value)}
+            className={inputClass}
+          >
+            <option value="">Vyber dojo</option>
+            {dojos.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 rounded-3xl bg-[#f7f2e8] p-2">
           <button
             type="button"
             onClick={() => setIsAdult(false)}
-            className={`flex-1 rounded-xl py-3 font-bold ${
-              !isAdult
-                ? "bg-brand-red text-white"
-                : "bg-black/10"
+            className={`rounded-2xl px-4 py-4 font-black active:scale-[0.98] ${
+              !isAdult ? "bg-blue-600 text-white" : "bg-white text-black"
             }`}
           >
             Dieťa
@@ -125,132 +220,243 @@ export default function NewStudentPage() {
           <button
             type="button"
             onClick={() => setIsAdult(true)}
-            className={`flex-1 rounded-xl py-3 font-bold ${
-              isAdult
-                ? "bg-brand-red text-white"
-                : "bg-black/10"
+            className={`rounded-2xl px-4 py-4 font-black active:scale-[0.98] ${
+              isAdult ? "bg-green-600 text-white" : "bg-white text-black"
             }`}
           >
             Dospelý
           </button>
         </div>
 
-        {/* MENO */}
         <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className={labelClass}>
+              {isAdult ? "Meno dospelého cvičiaceho" : "Meno dieťaťa"}
+            </label>
+            <input
+              name="first_name"
+              required
+              placeholder="Meno"
+              className={inputClass}
+            />
+          </div>
+
+          <div>
+            <label className={labelClass}>
+              {isAdult ? "Priezvisko dospelého cvičiaceho" : "Priezvisko dieťaťa"}
+            </label>
+            <input
+              name="last_name"
+              required
+              placeholder="Priezvisko"
+              className={inputClass}
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className={labelClass}>Rok narodenia</label>
           <input
-            name="first_name"
-            required
-            placeholder="Meno"
-            className="rounded-xl border px-4 py-3"
-          />
-          <input
-            name="last_name"
-            required
-            placeholder="Priezvisko"
-            className="rounded-xl border px-4 py-3"
+            name="birth_year"
+            type="number"
+            placeholder="Rok narodenia"
+            className={inputClass}
           />
         </div>
 
-        <input
-          name="birth_year"
-          type="number"
-          placeholder="Rok narodenia"
-          className="rounded-xl border px-4 py-3"
-        />
-
-        {/* 👇 Dospelý */}
-        {isAdult && (
-          <div className="grid gap-4 sm:grid-cols-2">
-            <input
-              name="phone"
-              placeholder="Telefón"
-              className="rounded-xl border px-4 py-3"
-            />
-            <input
-              name="email"
-              type="email"
-              placeholder="Email"
-              className="rounded-xl border px-4 py-3"
-            />
+        <div className="rounded-[26px] bg-[#f7f2e8] p-4">
+          <div className="mb-4">
+            <p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">
+              Kontakt
+            </p>
+            <h3 className="text-xl font-black">
+              {isAdult ? "Kontakt cvičiaceho" : "Kontakt rodiča"}
+            </h3>
           </div>
-        )}
 
-        {/* 👇 Dieťa */}
-        {!isAdult && (
+          {isAdult ? (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className={labelClass}>
+                  <span className="inline-flex items-center gap-2">
+                    <Phone size={17} />
+                    Telefón
+                  </span>
+                </label>
+                <input name="phone" placeholder="Telefón" className={inputClass} />
+              </div>
+
+              <div>
+                <label className={labelClass}>
+                  <span className="inline-flex items-center gap-2">
+                    <Mail size={17} />
+                    Email
+                  </span>
+                </label>
+                <input
+                  name="email"
+                  type="email"
+                  placeholder="Email"
+                  className={inputClass}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div>
+                <label className={labelClass}>Meno rodiča</label>
+                <input
+                  name="parent_name"
+                  placeholder="Meno rodiča"
+                  className={inputClass}
+                />
+              </div>
+
+              <div>
+                <label className={labelClass}>
+                  <span className="inline-flex items-center gap-2">
+                    <Phone size={17} />
+                    Telefón rodiča
+                  </span>
+                </label>
+                <input
+                  name="parent_phone"
+                  placeholder="Telefón rodiča"
+                  className={inputClass}
+                />
+              </div>
+
+              <div>
+                <label className={labelClass}>
+                  <span className="inline-flex items-center gap-2">
+                    <Mail size={17} />
+                    Email rodiča
+                  </span>
+                </label>
+                <input
+                  name="parent_email"
+                  type="email"
+                  placeholder="Email rodiča"
+                  className={inputClass}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-[26px] bg-[#f7f2e8] p-4">
+          <div className="mb-4">
+            <p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">
+              Technický stupeň
+            </p>
+            <h3 className="text-xl font-black">Páskovanie / skúšky</h3>
+          </div>
+
           <div className="grid gap-4 sm:grid-cols-3">
-            <input
-              name="parent_name"
-              placeholder="Meno rodiča"
-              className="rounded-xl border px-4 py-3"
-            />
-            <input
-              name="parent_phone"
-              placeholder="Telefón rodiča"
-              className="rounded-xl border px-4 py-3"
-            />
-            <input
-              name="parent_email"
-              type="email"
-              placeholder="Email rodiča"
-              className="rounded-xl border px-4 py-3"
-            />
+            <div>
+              <label className={labelClass}>Typ stupňa</label>
+              <select name="grade_system" className={inputClass}>
+                <option value="">Typ stupňa</option>
+                <option value="child">Detské pásiky</option>
+                <option value="kyu_dan">Kyu / Dan</option>
+              </select>
+            </div>
+
+            <div>
+              <label className={labelClass}>
+                <span className="inline-flex items-center gap-2">
+                  <GraduationCap size={17} />
+                  Technický stupeň
+                </span>
+              </label>
+              <select name="technical_grade" className={inputClass}>
+                <option value="">Technický stupeň</option>
+                {gradeOptions.map((g) => (
+                  <option key={g} value={g}>
+                    {g}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className={labelClass}>
+                <span className="inline-flex items-center gap-2">
+                  <CalendarDays size={17} />
+                  Dátum skúšok
+                </span>
+              </label>
+              <input name="last_grading_date" type="date" className={inputClass} />
+            </div>
           </div>
-        )}
-
-        {/* STUPNE */}
-        <div className="grid gap-4 sm:grid-cols-3">
-          <select
-            name="grade_system"
-            className="rounded-xl border px-4 py-3"
-          >
-            <option value="">Typ stupňa</option>
-            <option value="child">Detské pásiky</option>
-            <option value="kyu_dan">Kyu / Dan</option>
-          </select>
-
-          <select
-            name="technical_grade"
-            className="rounded-xl border px-4 py-3"
-          >
-            <option value="">Technický stupeň</option>
-            {gradeOptions.map((g) => (
-              <option key={g} value={g}>
-                {g}
-              </option>
-            ))}
-          </select>
-
-          <input
-            name="last_grading_date"
-            type="date"
-            className="rounded-xl border px-4 py-3"
-          />
         </div>
 
-        <textarea
-          name="health_info"
-          rows={3}
-          placeholder="Zdravotný stav"
-          className="rounded-xl border px-4 py-3"
-        />
+        <div className="rounded-[26px] bg-[#f7f2e8] p-4 space-y-4">
+          <div>
+            <p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">
+              Bezpečnosť a poznámky
+            </p>
+            <h3 className="text-xl font-black">Zdravie, lieky, poznámky</h3>
+          </div>
 
-        <textarea
-          name="medication_info"
-          rows={3}
-          placeholder="Lieky"
-          className="rounded-xl border px-4 py-3"
-        />
+          <div>
+            <label className={labelClass}>
+              <span className="inline-flex items-center gap-2">
+                <HeartPulse size={17} />
+                Zdravotný stav
+              </span>
+            </label>
+            <textarea
+              name="health_info"
+              rows={3}
+              placeholder="Zdravotný stav"
+              className={textareaClass}
+            />
+          </div>
 
-        <textarea
-          name="notes"
-          rows={3}
-          placeholder="Poznámka"
-          className="rounded-xl border px-4 py-3"
-        />
+          <div>
+            <label className={labelClass}>
+              <span className="inline-flex items-center gap-2">
+                <ShieldAlert size={17} />
+                Lieky
+              </span>
+            </label>
+            <textarea
+              name="medication_info"
+              rows={3}
+              placeholder="Lieky"
+              className={textareaClass}
+            />
+          </div>
 
-        <button className="rounded-xl bg-brand-red px-4 py-3 font-bold text-white">
-          Uložiť žiaka
-        </button>
+          <div>
+            <label className={labelClass}>Poznámka</label>
+            <textarea
+              name="notes"
+              rows={3}
+              placeholder="Poznámka"
+              className={textareaClass}
+            />
+          </div>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          <button
+            disabled={saving}
+            className="inline-flex h-[58px] items-center justify-center gap-2 rounded-2xl bg-[#d71920] px-4 font-black text-white shadow-[0_8px_18px_rgba(215,25,32,0.25)] active:scale-[0.98] disabled:opacity-60"
+          >
+            <Save size={20} />
+            {saving ? "Ukladám..." : "Uložiť žiaka"}
+          </button>
+
+          <Link
+            href="/students"
+            className="inline-flex h-[58px] items-center justify-center gap-2 rounded-2xl bg-black/10 px-4 font-black text-black active:scale-[0.98]"
+          >
+            <ArrowLeft size={18} />
+            Späť na žiakov
+          </Link>
+        </div>
       </form>
     </div>
   );
