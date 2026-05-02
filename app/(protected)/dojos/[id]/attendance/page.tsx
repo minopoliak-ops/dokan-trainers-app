@@ -2,11 +2,29 @@
 
 import { createClient } from "@/lib/supabase/browser";
 import { usePermissions } from "@/lib/usePermissions";
-import { Check, X } from "lucide-react";
+import {
+  ArrowLeft,
+  CalendarCheck,
+  Check,
+  CheckCircle2,
+  ChevronDown,
+  Copy,
+  Eye,
+  EyeOff,
+  Filter,
+  Plus,
+  RefreshCcw,
+  Search,
+  Sparkles,
+  Users,
+  X,
+  XCircle,
+} from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 type Status = "present" | "absent" | null;
+type StudentFilter = "all" | "visible" | "hidden";
 
 const weekDays = [
   { value: 1, label: "Po" },
@@ -30,12 +48,25 @@ const topicColors = [
 ];
 
 function topicColor(topicId?: string | null) {
-  if (!topicId) return "bg-brand-cream border-black/5";
+  if (!topicId) return "bg-[#f7f2e8] border-black/5";
 
   let sum = 0;
   for (const char of topicId) sum += char.charCodeAt(0);
 
   return topicColors[sum % topicColors.length];
+}
+
+function formatDate(date: string) {
+  const d = new Date(date);
+  return `${d.getDate()}.${d.getMonth() + 1}.`;
+}
+
+function formatLongDate(date: string) {
+  return new Date(date).toLocaleDateString("sk-SK", {
+    weekday: "short",
+    day: "2-digit",
+    month: "2-digit",
+  });
 }
 
 export default function AttendancePage({ params }: { params: { id: string } }) {
@@ -51,6 +82,10 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
 
   const [allowed, setAllowed] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  const [studentSearch, setStudentSearch] = useState("");
+  const [studentFilter, setStudentFilter] = useState<StudentFilter>("visible");
+  const [showSetup, setShowSetup] = useState(false);
 
   const isAdmin = !!permissions?.can_manage_trainers;
   const canWriteAttendance = !!permissions?.can_attendance || isAdmin;
@@ -70,7 +105,6 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
   const [generateTopicId, setGenerateTopicId] = useState("");
   const [generateTitle, setGenerateTitle] = useState("Tréning");
 
-  const visibleStudents = students.filter((s) => !hiddenStudents.includes(s.id));
   const monthStart = `${selectedMonth}-01`;
 
   const monthEnd = useMemo(() => {
@@ -90,13 +124,59 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   }, [selectedMonth]);
 
+  const filteredStudents = useMemo(() => {
+    const q = studentSearch.toLowerCase().trim();
+
+    return students.filter((student) => {
+      const hidden = hiddenStudents.includes(student.id);
+
+      if (studentFilter === "visible" && hidden) return false;
+      if (studentFilter === "hidden" && !hidden) return false;
+
+      if (!q) return true;
+
+      return [
+        student.first_name,
+        student.last_name,
+        student.technical_grade,
+        student.email,
+        student.phone,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(q);
+    });
+  }, [students, hiddenStudents, studentSearch, studentFilter]);
+
+  const visibleStudents = filteredStudents.filter(
+    (s) => !hiddenStudents.includes(s.id)
+  );
+
+  const monthStats = useMemo(() => {
+    const present = attendance.filter((a) => a.status === "present").length;
+    const absent = attendance.filter((a) => a.status === "absent").length;
+    const totalSlots = students.length * trainings.length;
+    const marked = present + absent;
+    const unmarked = Math.max(totalSlots - marked, 0);
+    const percent = totalSlots > 0 ? Math.round((present / totalSlots) * 100) : 0;
+
+    return {
+      students: students.length,
+      trainings: trainings.length,
+      present,
+      absent,
+      unmarked,
+      percent,
+    };
+  }, [attendance, students.length, trainings.length]);
+
   async function checkAccess(supabase: any) {
     if (permissionsLoading) return false;
 
     const isAdminNow = !!permissions?.can_manage_trainers;
 
     if (isAdminNow) return true;
-
     if (!permissions?.id) return false;
 
     const { data: link, error } = await supabase
@@ -157,19 +237,11 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
       .eq("active", true)
       .order("last_name");
 
-    if (studentsResult.error) {
-      console.error("Students error:", studentsResult.error);
-    }
-
     const topicsResult = await supabase
       .from("training_topics")
       .select("*")
       .eq("active", true)
       .order("name");
-
-    if (topicsResult.error) {
-      console.error("Topics error:", topicsResult.error);
-    }
 
     const trainingsResult = await supabase
       .from("trainings")
@@ -179,30 +251,27 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
       .lte("training_date", monthEnd)
       .order("training_date");
 
-    if (trainingsResult.error) {
-      console.error("Trainings error:", trainingsResult.error);
-    }
-
     const blackoutResult = await supabase
       .from("training_blackout_dates")
       .select("*")
       .gte("date", monthStart)
       .lte("date", monthEnd);
 
-    if (blackoutResult.error) {
-      console.error("Blackouts error:", blackoutResult.error);
-    }
-
     const trainingIds = (trainingsResult.data || []).map((t: any) => t.id);
 
     const attendanceResult =
       trainingIds.length > 0
-        ? await supabase.from("attendance").select("*").in("training_id", trainingIds)
+        ? await supabase
+            .from("attendance")
+            .select("*")
+            .in("training_id", trainingIds)
         : { data: [], error: null };
 
-    if (attendanceResult.error) {
-      console.error("Attendance error:", attendanceResult.error);
-    }
+    if (studentsResult.error) console.error(studentsResult.error);
+    if (topicsResult.error) console.error(topicsResult.error);
+    if (trainingsResult.error) console.error(trainingsResult.error);
+    if (blackoutResult.error) console.error(blackoutResult.error);
+    if (attendanceResult.error) console.error(attendanceResult.error);
 
     setDojo(dojoResult.data);
     setStudents(studentsResult.data || []);
@@ -414,21 +483,20 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
 
   function getAttendance(trainingId: string, studentId: string): Status {
     return (
-      attendance.find((a) => a.training_id === trainingId && a.student_id === studentId)
-        ?.status || null
+      attendance.find(
+        (a) => a.training_id === trainingId && a.student_id === studentId
+      )?.status || null
     );
   }
 
-  async function cycleAttendance(trainingId: string, studentId: string) {
+  async function setAttendanceStatus(
+    trainingId: string,
+    studentId: string,
+    next: Status
+  ) {
     if (!canWriteAttendance) return alert("Nemáš oprávnenie zapisovať prezenčku.");
 
     const supabase = createClient();
-    const current = getAttendance(trainingId, studentId);
-
-    let next: Status = null;
-    if (!current) next = "present";
-    else if (current === "present") next = "absent";
-    else next = null;
 
     if (next === null) {
       const { error } = await supabase
@@ -454,8 +522,22 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
 
       if (next === null) return filtered;
 
-      return [...filtered, { training_id: trainingId, student_id: studentId, status: next }];
+      return [
+        ...filtered,
+        { training_id: trainingId, student_id: studentId, status: next },
+      ];
     });
+  }
+
+  async function cycleAttendance(trainingId: string, studentId: string) {
+    const current = getAttendance(trainingId, studentId);
+
+    let next: Status = null;
+    if (!current) next = "present";
+    else if (current === "present") next = "absent";
+    else next = null;
+
+    setAttendanceStatus(trainingId, studentId, next);
   }
 
   async function markAll(trainingId: string, status: "present" | "absent") {
@@ -477,22 +559,39 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
 
     setAttendance((prev) => {
       const filtered = prev.filter(
-        (a) => !(a.training_id === trainingId && visibleStudents.some((s) => s.id === a.student_id))
+        (a) =>
+          !(
+            a.training_id === trainingId &&
+            visibleStudents.some((s) => s.id === a.student_id)
+          )
       );
 
       return [...filtered, ...rows];
     });
   }
 
-  function formatDate(date: string) {
-    const d = new Date(date);
-    return `${d.getDate()}.${d.getMonth() + 1}.`;
+  async function clearTraining(trainingId: string) {
+    if (!canWriteAttendance) return;
+    if (!confirm("Vymazať označenia pre tento tréning?")) return;
+
+    const supabase = createClient();
+
+    const { error } = await supabase
+      .from("attendance")
+      .delete()
+      .eq("training_id", trainingId);
+
+    if (error) return alert(error.message);
+
+    setAttendance((prev) => prev.filter((a) => a.training_id !== trainingId));
   }
 
   if (permissionsLoading || loading) {
     return (
       <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40">
-        Načítavam...
+        <div className="rounded-3xl bg-white p-6 shadow-sm">
+          Načítavam prezenčku...
+        </div>
       </div>
     );
   }
@@ -517,32 +616,98 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
 
   return (
     <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40 space-y-6">
-      <div className="rounded-3xl bg-brand-black p-6 text-white shadow-lg">
-        <p className="mb-2 text-sm text-white/60">Mesačná prezenčka</p>
-        <h1 className="text-3xl font-bold">{dojo.name}</h1>
-        <p className="mt-2 text-white/70">{dojo.address}</p>
+      <div className="overflow-hidden rounded-[32px] bg-[#111] text-white shadow-[0_18px_45px_rgba(0,0,0,0.25)]">
+        <div className="p-6">
+          <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#d71920]">
+            <CalendarCheck size={28} />
+          </div>
+
+          <p className="text-sm font-bold uppercase tracking-[0.18em] text-white/45">
+            Mesačná prezenčka
+          </p>
+
+          <h1 className="mt-2 text-4xl font-black tracking-tight">
+            {dojo.name}
+          </h1>
+
+          <p className="mt-2 max-w-2xl text-white/65">
+            {dojo.address || "Bez adresy"}
+          </p>
+
+          <div className="mt-6 grid gap-3 md:grid-cols-4">
+            <div className="rounded-2xl bg-white/10 p-4">
+              <p className="text-sm text-white/50">Žiaci</p>
+              <p className="text-3xl font-black">{monthStats.students}</p>
+            </div>
+
+            <div className="rounded-2xl bg-white/10 p-4">
+              <p className="text-sm text-white/50">Tréningy</p>
+              <p className="text-3xl font-black">{monthStats.trainings}</p>
+            </div>
+
+            <div className="rounded-2xl bg-white/10 p-4">
+              <p className="text-sm text-white/50">Prítomnosti</p>
+              <p className="text-3xl font-black text-green-300">
+                {monthStats.present}
+              </p>
+            </div>
+
+            <div className="rounded-2xl bg-white/10 p-4">
+              <p className="text-sm text-white/50">Účasť</p>
+              <p className="text-3xl font-black">{monthStats.percent}%</p>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
-        <h2 className="mb-4 text-2xl font-bold">Mesiac</h2>
-        <input
-          type="month"
-          value={selectedMonth}
-          onChange={(e) => setSelectedMonth(e.target.value)}
-          className="rounded-xl border px-4 py-3"
-        />
+      <div className="grid gap-3 md:grid-cols-[1fr_auto_auto]">
+        <div className="rounded-[26px] bg-white p-4 shadow-sm ring-1 ring-black/10">
+          <label className="mb-2 block text-sm font-black text-black/55">
+            Mesiac
+          </label>
+          <input
+            type="month"
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(e.target.value)}
+            className="h-[52px] w-full rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 font-bold outline-none"
+          />
+        </div>
+
+        <button
+          type="button"
+          onClick={loadData}
+          className="inline-flex items-center justify-center gap-2 rounded-[26px] bg-white px-5 py-4 font-black shadow-sm ring-1 ring-black/10 active:scale-[0.98]"
+        >
+          <RefreshCcw size={18} />
+          Obnoviť
+        </button>
+
+        {canCreateTrainings && (
+          <button
+            type="button"
+            onClick={() => setShowSetup((v) => !v)}
+            className="inline-flex items-center justify-center gap-2 rounded-[26px] bg-[#d71920] px-5 py-4 font-black text-white shadow-[0_8px_18px_rgba(215,25,32,0.25)] active:scale-[0.98]"
+          >
+            <Sparkles size={18} />
+            {showSetup ? "Skryť nastavenia" : "Nastavenia tréningov"}
+            <ChevronDown
+              size={18}
+              className={`transition ${showSetup ? "rotate-180" : ""}`}
+            />
+          </button>
+        )}
       </div>
 
-      {canCreateTrainings && (
-        <>
-          <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
-            <h2 className="mb-4 text-2xl font-bold">Rýchle témy mesiaca</h2>
+      {canCreateTrainings && showSetup && (
+        <div className="grid gap-5">
+          <div className="rounded-[30px] bg-white p-5 shadow-sm ring-1 ring-black/10">
+            <h2 className="mb-4 text-2xl font-black">Rýchle témy mesiaca</h2>
 
             <div className="grid gap-3 md:grid-cols-3">
               <select
                 value={bulkTopicId}
                 onChange={(e) => setBulkTopicId(e.target.value)}
-                className="rounded-xl border px-4 py-3"
+                className="h-[52px] rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 font-bold"
               >
                 <option value="">Bez témy</option>
                 {topics.map((topic) => (
@@ -553,32 +718,39 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
               </select>
 
               <button
+                type="button"
                 onClick={applyTopicToAllTrainings}
-                className="rounded-xl bg-[#111] px-4 py-3 font-bold text-white"
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#111] px-4 py-3 font-bold text-white active:scale-[0.98]"
               >
-                Použiť pre všetky tréningy
+                <CheckCircle2 size={18} />
+                Použiť pre všetky
               </button>
 
               <button
+                type="button"
                 onClick={copyTopicsFromPreviousMonth}
-                className="rounded-xl bg-[#d71920] px-4 py-3 font-bold text-white"
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#d71920] px-4 py-3 font-bold text-white active:scale-[0.98]"
               >
+                <Copy size={18} />
                 Kopírovať z minulého mesiaca
               </button>
             </div>
           </div>
 
-          <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
-            <h2 className="mb-4 text-2xl font-bold">Automaticky vygenerovať tréningy</h2>
+          <div className="rounded-[30px] bg-white p-5 shadow-sm ring-1 ring-black/10">
+            <h2 className="mb-4 text-2xl font-black">
+              Automaticky vygenerovať tréningy
+            </h2>
 
             <div className="mb-4 flex flex-wrap gap-2">
               {weekDays.map((day) => (
                 <button
+                  type="button"
                   key={day.value}
                   onClick={() => toggleGenerateDay(day.value)}
-                  className={`rounded-xl px-4 py-2 font-bold ${
+                  className={`rounded-2xl px-4 py-3 font-black active:scale-[0.98] ${
                     generateDays.includes(day.value)
-                      ? "bg-brand-red text-white"
+                      ? "bg-[#d71920] text-white"
                       : "bg-black/10 text-black"
                   }`}
                 >
@@ -592,13 +764,13 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
                 value={generateTitle}
                 onChange={(e) => setGenerateTitle(e.target.value)}
                 placeholder="Názov tréningu"
-                className="rounded-xl border px-4 py-3"
+                className="h-[52px] rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 font-bold"
               />
 
               <select
                 value={generateTopicId}
                 onChange={(e) => setGenerateTopicId(e.target.value)}
-                className="rounded-xl border px-4 py-3"
+                className="h-[52px] rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 font-bold"
               >
                 <option value="">Bez témy</option>
                 {topics.map((topic) => (
@@ -609,36 +781,38 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
               </select>
 
               <button
+                type="button"
                 onClick={generateTrainings}
-                className="rounded-xl bg-brand-red px-4 py-3 font-bold text-white"
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#d71920] px-4 py-3 font-bold text-white active:scale-[0.98]"
               >
+                <Sparkles size={18} />
                 Vygenerovať mesiac
               </button>
             </div>
           </div>
 
-          <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/10">
-            <h2 className="mb-4 text-2xl font-bold">Pridať jeden tréning ručne</h2>
+          <div className="rounded-[30px] bg-white p-5 shadow-sm ring-1 ring-black/10">
+            <h2 className="mb-4 text-2xl font-black">Pridať jeden tréning</h2>
 
             <div className="grid gap-3 md:grid-cols-4">
               <input
                 type="date"
                 value={trainingDate}
                 onChange={(e) => setTrainingDate(e.target.value)}
-                className="rounded-xl border px-4 py-3"
+                className="h-[52px] rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 font-bold"
               />
 
               <input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Názov tréningu"
-                className="rounded-xl border px-4 py-3"
+                className="h-[52px] rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 font-bold"
               />
 
               <select
                 value={topicId}
                 onChange={(e) => setTopicId(e.target.value)}
-                className="rounded-xl border px-4 py-3"
+                className="h-[52px] rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 font-bold"
               >
                 <option value="">Bez témy</option>
                 {topics.map((topic) => (
@@ -649,57 +823,134 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
               </select>
 
               <button
+                type="button"
                 onClick={addTraining}
-                className="rounded-xl bg-brand-red px-4 py-3 font-bold text-white"
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#d71920] px-4 py-3 font-bold text-white active:scale-[0.98]"
               >
-                + Pridať tréning
+                <Plus size={18} />
+                Pridať tréning
               </button>
             </div>
           </div>
-        </>
+        </div>
       )}
 
-      <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-black/10 sm:p-6">
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-2xl font-bold">Prezenčka za mesiac</h2>
+      <div className="rounded-[30px] bg-white p-5 shadow-sm ring-1 ring-black/10">
+        <div className="mb-4 grid gap-3 md:grid-cols-[1fr_auto_auto]">
+          <div>
+            <p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">
+              Prezenčka
+            </p>
+            <h2 className="text-2xl font-black">Mesačný prehľad</h2>
+          </div>
 
-          {hiddenStudents.length > 0 && (
+          <div className="relative">
+            <Search
+              size={18}
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-black/35"
+            />
+            <input
+              value={studentSearch}
+              onChange={(e) => setStudentSearch(e.target.value)}
+              placeholder="Hľadať žiaka..."
+              className="h-[52px] w-full rounded-2xl border border-black/10 bg-[#f7f2e8] pl-11 pr-4 font-bold outline-none md:w-[260px]"
+            />
+          </div>
+
+          <div className="flex gap-2">
             <button
-              onClick={() => setHiddenStudents([])}
-              className="rounded-xl bg-black px-4 py-2 text-sm font-bold text-white"
+              type="button"
+              onClick={() => setStudentFilter("visible")}
+              className={`rounded-2xl px-4 py-3 font-black ${
+                studentFilter === "visible"
+                  ? "bg-[#111] text-white"
+                  : "bg-black/10 text-black"
+              }`}
             >
-              Zobraziť všetkých späť
+              <Eye size={18} />
             </button>
-          )}
+
+            <button
+              type="button"
+              onClick={() => setStudentFilter("hidden")}
+              className={`rounded-2xl px-4 py-3 font-black ${
+                studentFilter === "hidden"
+                  ? "bg-[#111] text-white"
+                  : "bg-black/10 text-black"
+              }`}
+            >
+              <EyeOff size={18} />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setStudentFilter("all")}
+              className={`rounded-2xl px-4 py-3 font-black ${
+                studentFilter === "all"
+                  ? "bg-[#111] text-white"
+                  : "bg-black/10 text-black"
+              }`}
+            >
+              <Filter size={18} />
+            </button>
+          </div>
         </div>
 
+        {hiddenStudents.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setHiddenStudents([])}
+            className="mb-4 inline-flex items-center gap-2 rounded-2xl bg-[#111] px-4 py-3 text-sm font-bold text-white active:scale-[0.98]"
+          >
+            <Eye size={18} />
+            Zobraziť všetkých späť
+          </button>
+        )}
+
         {trainings.length === 0 ? (
-          <p className="rounded-2xl bg-brand-cream p-6 text-center">
+          <p className="rounded-2xl bg-[#f7f2e8] p-6 text-center">
             V tomto mesiaci ešte nie sú zadané tréningy.
           </p>
-        ) : visibleStudents.length === 0 ? (
-          <p className="rounded-2xl bg-brand-cream p-6 text-center">
-            V tomto dojo nie sú zobrazení žiadni žiaci.
+        ) : filteredStudents.length === 0 ? (
+          <p className="rounded-2xl bg-[#f7f2e8] p-6 text-center">
+            Nenašli sa žiadni žiaci pre tento filter.
           </p>
         ) : (
-          <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+          <div className="-mx-5 overflow-x-auto px-5">
             <table className="min-w-max border-separate border-spacing-0">
               <thead>
                 <tr>
-                  <th className="sticky left-0 z-30 min-w-[180px] border-b bg-white p-3 text-left sm:min-w-[240px]">
-                    Žiak
+                  <th className="sticky left-0 z-30 min-w-[210px] border-b bg-white p-3 text-left sm:min-w-[260px]">
+                    <div className="flex items-center gap-2">
+                      <Users size={18} />
+                      Žiak
+                    </div>
                   </th>
 
                   {trainings.map((training) => (
-                    <th key={training.id} className="min-w-[150px] border-b p-3 text-center">
-                      <div className={`rounded-2xl border p-3 space-y-2 ${topicColor(training.topic_id)}`}>
-                        <p className="text-lg font-black">{formatDate(training.training_date)}</p>
+                    <th
+                      key={training.id}
+                      className="min-w-[170px] border-b p-3 text-center"
+                    >
+                      <div
+                        className={`rounded-3xl border p-3 space-y-2 shadow-sm ${topicColor(
+                          training.topic_id
+                        )}`}
+                      >
+                        <p className="text-lg font-black">
+                          {formatDate(training.training_date)}
+                        </p>
+                        <p className="text-xs font-bold text-black/45">
+                          {formatLongDate(training.training_date)}
+                        </p>
 
                         {canCreateTrainings ? (
                           <select
                             value={training.topic_id || ""}
-                            onChange={(e) => updateTrainingTopic(training.id, e.target.value)}
-                            className="w-full rounded-lg border bg-white px-2 py-1 text-xs"
+                            onChange={(e) =>
+                              updateTrainingTopic(training.id, e.target.value)
+                            }
+                            className="w-full rounded-xl border bg-white px-2 py-2 text-xs font-bold"
                           >
                             <option value="">Bez témy</option>
                             {topics.map((topic) => (
@@ -715,19 +966,29 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
                         )}
 
                         {canWriteAttendance && (
-                          <div className="grid grid-cols-2 gap-1">
+                          <div className="grid grid-cols-3 gap-1">
                             <button
+                              type="button"
                               onClick={() => markAll(training.id, "present")}
-                              className="rounded-lg bg-green-600 px-2 py-1 text-xs font-bold text-white"
+                              className="rounded-xl bg-green-600 px-2 py-2 text-xs font-black text-white"
                             >
-                              ✓ všetci
+                              ✓
                             </button>
 
                             <button
+                              type="button"
                               onClick={() => markAll(training.id, "absent")}
-                              className="rounded-lg bg-red-600 px-2 py-1 text-xs font-bold text-white"
+                              className="rounded-xl bg-red-600 px-2 py-2 text-xs font-black text-white"
                             >
-                              ✕ všetci
+                              ✕
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => clearTraining(training.id)}
+                              className="rounded-xl bg-black/20 px-2 py-2 text-xs font-black text-black"
+                            >
+                              ↺
                             </button>
                           </div>
                         )}
@@ -738,50 +999,119 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
               </thead>
 
               <tbody>
-                {visibleStudents.map((student) => (
-                  <tr key={student.id}>
-                    <td className="sticky left-0 z-20 min-w-[180px] border-b bg-white p-3 shadow-[8px_0_12px_-12px_rgba(0,0,0,0.5)] sm:min-w-[240px]">
-                      <p className="font-bold leading-tight">
-                        {student.first_name} {student.last_name}
-                      </p>
-                      <p className="text-sm text-black/60">
-                        {student.technical_grade || "Bez stupňa"}
-                      </p>
+                {filteredStudents.map((student) => {
+                  const hidden = hiddenStudents.includes(student.id);
 
-                      {canWriteAttendance && (
-                        <button
-                          onClick={() => setHiddenStudents((prev) => [...prev, student.id])}
-                          className="mt-1 text-xs font-bold text-red-600"
-                        >
-                          Odobrať z prezenčky
-                        </button>
-                      )}
-                    </td>
+                  return (
+                    <tr key={student.id} className={hidden ? "opacity-45" : ""}>
+                      <td className="sticky left-0 z-20 min-w-[210px] border-b bg-white p-3 shadow-[8px_0_12px_-12px_rgba(0,0,0,0.5)] sm:min-w-[260px]">
+                        <p className="font-black leading-tight">
+                          {student.first_name} {student.last_name}
+                        </p>
+                        <p className="text-sm text-black/55">
+                          {student.technical_grade || "Bez stupňa"}
+                        </p>
 
-                    {trainings.map((training) => {
-                      const status = getAttendance(training.id, student.id);
-
-                      return (
-                        <td key={training.id} className="border-b p-3 text-center">
+                        {canWriteAttendance && (
                           <button
-                            disabled={!canWriteAttendance}
-                            onClick={() => cycleAttendance(training.id, student.id)}
-                            className={`mx-auto flex h-12 w-12 items-center justify-center rounded-xl text-white disabled:opacity-50 ${
-                              status === "present"
-                                ? "bg-green-600"
-                                : status === "absent"
-                                ? "bg-red-600"
-                                : "bg-black/20"
+                            type="button"
+                            onClick={() =>
+                              setHiddenStudents((prev) =>
+                                prev.includes(student.id)
+                                  ? prev.filter((id) => id !== student.id)
+                                  : [...prev, student.id]
+                              )
+                            }
+                            className={`mt-2 rounded-xl px-3 py-1 text-xs font-black ${
+                              hidden
+                                ? "bg-green-100 text-green-800"
+                                : "bg-red-50 text-red-700"
                             }`}
                           >
-                            {status === "present" && <Check />}
-                            {status === "absent" && <X />}
+                            {hidden ? "Vrátiť" : "Skryť"}
                           </button>
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
+                        )}
+                      </td>
+
+                      {trainings.map((training) => {
+                        const status = getAttendance(training.id, student.id);
+
+                        return (
+                          <td
+                            key={training.id}
+                            className="border-b p-3 text-center"
+                          >
+                            <div className="grid grid-cols-3 gap-1">
+                              <button
+                                type="button"
+                                disabled={!canWriteAttendance || hidden}
+                                onClick={() =>
+                                  setAttendanceStatus(
+                                    training.id,
+                                    student.id,
+                                    "present"
+                                  )
+                                }
+                                className={`flex h-11 items-center justify-center rounded-xl text-white disabled:opacity-40 ${
+                                  status === "present"
+                                    ? "bg-green-600"
+                                    : "bg-black/15"
+                                }`}
+                              >
+                                <Check size={18} />
+                              </button>
+
+                              <button
+                                type="button"
+                                disabled={!canWriteAttendance || hidden}
+                                onClick={() =>
+                                  setAttendanceStatus(
+                                    training.id,
+                                    student.id,
+                                    "absent"
+                                  )
+                                }
+                                className={`flex h-11 items-center justify-center rounded-xl text-white disabled:opacity-40 ${
+                                  status === "absent"
+                                    ? "bg-red-600"
+                                    : "bg-black/15"
+                                }`}
+                              >
+                                <X size={18} />
+                              </button>
+
+                              <button
+                                type="button"
+                                disabled={!canWriteAttendance || hidden}
+                                onClick={() =>
+                                  setAttendanceStatus(training.id, student.id, null)
+                                }
+                                className={`flex h-11 items-center justify-center rounded-xl disabled:opacity-40 ${
+                                  status === null
+                                    ? "bg-[#111] text-white"
+                                    : "bg-black/10 text-black"
+                                }`}
+                              >
+                                <XCircle size={18} />
+                              </button>
+                            </div>
+
+                            <button
+                              type="button"
+                              disabled={!canWriteAttendance || hidden}
+                              onClick={() =>
+                                cycleAttendance(training.id, student.id)
+                              }
+                              className="mt-1 text-[10px] font-bold text-black/35 disabled:opacity-40"
+                            >
+                              cyklus
+                            </button>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -790,8 +1120,9 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
 
       <Link
         href={`/dojos/${params.id}`}
-        className="inline-flex w-full items-center justify-center rounded-2xl bg-[#d71920] px-4 py-4 text-center font-bold text-white shadow-[0_6px_14px_rgba(215,25,32,0.25)] active:scale-[0.98]"
+        className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#d71920] px-4 py-4 text-center font-bold text-white shadow-[0_6px_14px_rgba(215,25,32,0.25)] active:scale-[0.98]"
       >
+        <ArrowLeft size={18} />
         Späť do dojo
       </Link>
     </div>
