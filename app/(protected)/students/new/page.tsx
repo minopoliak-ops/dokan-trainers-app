@@ -114,7 +114,7 @@ export default function NewStudentPage() {
     "box-border block h-[54px] w-full min-w-0 max-w-full appearance-none rounded-2xl border border-black/10 bg-white px-4 text-base font-bold outline-none transition focus:border-[#d71920] focus:bg-white focus:ring-2 focus:ring-[#d71920]/20";
 
   const dateInputClass =
-    "box-border block h-[54px] w-full min-w-0 max-w-full appearance-none rounded-2xl border border-black/10 bg-white px-4 text-left text-base font-bold outline-none transition focus:border-[#d71920] focus:bg-white focus:ring-2 focus:ring-[#d71920]/20";
+    "box-border block h-[54px] w-full min-w-0 max-w-full appearance-none rounded-2xl border border-black/10 bg-white px-4 text-center text-base font-black leading-[54px] outline-none transition focus:border-[#d71920] focus:bg-white focus:ring-2 focus:ring-[#d71920]/20";
 
   const textareaClass =
     "box-border block min-h-[110px] w-full min-w-0 max-w-full resize-y rounded-2xl border border-black/10 bg-white px-4 py-3 text-base font-semibold outline-none transition focus:border-[#d71920] focus:bg-white focus:ring-2 focus:ring-[#d71920]/20";
@@ -395,6 +395,7 @@ export default function NewStudentPage() {
                   name="last_grading_date"
                   type="date"
                   className={dateInputClass}
+                  style={{ textAlign: "center", WebkitTextAlignLast: "center" } as any}
                 />
               </div>
             </div>
