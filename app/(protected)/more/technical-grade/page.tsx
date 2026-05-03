@@ -5,21 +5,20 @@ import { usePermissions } from "@/lib/usePermissions";
 import {
   Award,
   BookOpen,
-  Check,
+  CalendarDays,
   CheckCircle2,
   ChevronDown,
   ClipboardList,
   Dumbbell,
+  FileUp,
   GraduationCap,
   Layers3,
   Plus,
   RefreshCcw,
   Search,
-  Sparkles,
   Trash2,
-  X,
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 type Syllabus = {
   id: string;
@@ -71,11 +70,44 @@ function gradeTypeLabel(type?: string | null) {
   return gradeTypes.find((g) => g.key === type)?.label || "Stupeň";
 }
 
+function gradeSelectLabel(s: Syllabus) {
+  const typeLabel = gradeTypeLabel(s.grade_type);
+  const gradeName = String(s.grade_name || "").trim();
+
+  if (!gradeName) return typeLabel;
+  if (gradeName.toLowerCase() === typeLabel.toLowerCase()) return gradeName;
+
+  return `${gradeName} · ${typeLabel}`;
+}
+
+function parseImportText(text: string) {
+  return text
+    .replace(/^\uFEFF/, "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line, index) => {
+      const parts = line.split(";").map((p) => p.trim());
+      const name = parts[0] || "";
+      const description = parts.slice(1).join(";") || null;
+
+      return {
+        name,
+        description,
+        sort_order: index + 1,
+      };
+    })
+    .filter((row) => row.name);
+}
+
 export default function TechnicalGradesPage() {
   const { permissions } = usePermissions();
   const isAdmin = !!permissions?.can_manage_trainers;
   const canManage = isAdmin || !!permissions?.can_manage_topics;
-  const canPractice = isAdmin || !!permissions?.can_create_trainings || !!permissions?.can_attendance;
+  const canPractice =
+    isAdmin || !!permissions?.can_create_trainings || !!permissions?.can_attendance;
+
+  const importFileRef = useRef<HTMLInputElement | null>(null);
 
   const [syllabi, setSyllabi] = useState<Syllabus[]>([]);
   const [sections, setSections] = useState<Section[]>([]);
@@ -91,6 +123,10 @@ export default function TechnicalGradesPage() {
   const [search, setSearch] = useState("");
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
+
+  const [importSectionId, setImportSectionId] = useState("");
+  const [importText, setImportText] = useState("");
+  const [working, setWorking] = useState(false);
 
   async function loadData() {
     setLoading(true);
@@ -123,14 +159,16 @@ export default function TechnicalGradesPage() {
     if (techniquesRes.error) alert(techniquesRes.error.message);
     if (dojosRes.error) console.error(dojosRes.error.message);
 
-    setSyllabi(syllabiRes.data || []);
+    const loadedSyllabi = syllabiRes.data || [];
+    setSyllabi(loadedSyllabi);
     setSections(sectionsRes.data || []);
     setTechniques(techniquesRes.data || []);
     setDojos(dojosRes.data || []);
 
-    if (!selectedSyllabusId && (syllabiRes.data || []).length > 0) {
-      setSelectedSyllabusId(syllabiRes.data![0].id);
-    }
+    setSelectedSyllabusId((current) => {
+      if (current && loadedSyllabi.some((s) => s.id === current)) return current;
+      return loadedSyllabi[0]?.id || "";
+    });
 
     setLoading(false);
   }
@@ -146,10 +184,13 @@ export default function TechnicalGradesPage() {
 
     if (selectedDojoId) trainingsQuery = trainingsQuery.eq("dojo_id", selectedDojoId);
 
-    const logsQuery = supabase
+    let logsQuery = supabase
       .from("training_technique_logs")
       .select("*")
       .eq("practiced_date", practiceDate);
+
+    if (selectedDojoId) logsQuery = logsQuery.eq("dojo_id", selectedDojoId);
+    if (selectedTrainingId) logsQuery = logsQuery.eq("training_id", selectedTrainingId);
 
     const [trainingsRes, logsRes] = await Promise.all([trainingsQuery, logsQuery]);
 
@@ -166,7 +207,7 @@ export default function TechnicalGradesPage() {
 
   useEffect(() => {
     loadLogsAndTrainings();
-  }, [practiceDate, selectedDojoId]);
+  }, [practiceDate, selectedDojoId, selectedTrainingId]);
 
   const selectedSyllabus = syllabi.find((s) => s.id === selectedSyllabusId);
 
@@ -174,9 +215,21 @@ export default function TechnicalGradesPage() {
     return sections.filter((s) => s.syllabus_id === selectedSyllabusId);
   }, [sections, selectedSyllabusId]);
 
+  useEffect(() => {
+    if (!importSectionId && selectedSections[0]?.id) {
+      setImportSectionId(selectedSections[0].id);
+    }
+
+    if (importSectionId && !selectedSections.some((s) => s.id === importSectionId)) {
+      setImportSectionId(selectedSections[0]?.id || "");
+    }
+  }, [selectedSections, importSectionId]);
+
   const selectedTechniqueIds = useMemo(() => {
     const sectionIds = selectedSections.map((s) => s.id);
-    return techniques.filter((t) => sectionIds.includes(t.section_id)).map((t) => t.id);
+    return techniques
+      .filter((t) => sectionIds.includes(t.section_id))
+      .map((t) => t.id);
   }, [techniques, selectedSections]);
 
   const practicedTechniqueIds = useMemo(() => {
@@ -191,17 +244,26 @@ export default function TechnicalGradesPage() {
     );
   }, [logs, selectedDojoId, selectedTrainingId]);
 
-  const practicedCount = selectedTechniqueIds.filter((id) => practicedTechniqueIds.has(id)).length;
+  const practicedCount = selectedTechniqueIds.filter((id) =>
+    practicedTechniqueIds.has(id)
+  ).length;
+
   const progress = selectedTechniqueIds.length
     ? Math.round((practicedCount / selectedTechniqueIds.length) * 100)
     : 0;
 
   function sectionTechniques(sectionId: string) {
     const q = search.toLowerCase().trim();
+
     return techniques.filter((t) => {
       if (t.section_id !== sectionId) return false;
       if (!q) return true;
-      return [t.name, t.description].filter(Boolean).join(" ").toLowerCase().includes(q);
+
+      return [t.name, t.description]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(q);
     });
   }
 
@@ -210,18 +272,41 @@ export default function TechnicalGradesPage() {
     if (!canManage) return alert("Nemáš oprávnenie spravovať technické stupne.");
 
     const form = new FormData(e.currentTarget);
+    const gradeName = String(form.get("grade_name") || "").trim();
+
+    if (!gradeName) return alert("Vyplň názov stupňa.");
+
+    setWorking(true);
+
     const supabase = createClient();
 
-    const { error } = await supabase.from("technical_grade_syllabus").insert({
-      grade_name: String(form.get("grade_name") || "").trim(),
-      grade_type: String(form.get("grade_type") || "kyu_dan"),
-      sort_order: Number(form.get("sort_order") || 0),
-      active: true,
-    });
+    const { data, error } = await supabase
+      .from("technical_grade_syllabus")
+      .insert({
+        grade_name: gradeName,
+        grade_type: String(form.get("grade_type") || "kyu_dan"),
+        sort_order: Number(form.get("sort_order") || 0),
+        active: true,
+      })
+      .select("*")
+      .single();
+
+    setWorking(false);
 
     if (error) return alert(error.message);
+
+    if (data) {
+      setSyllabi((prev) =>
+        [...prev, data].sort(
+          (a, b) =>
+            Number(a.sort_order || 0) - Number(b.sort_order || 0) ||
+            String(a.grade_name).localeCompare(String(b.grade_name))
+        )
+      );
+      setSelectedSyllabusId(data.id);
+    }
+
     e.currentTarget.reset();
-    loadData();
   }
 
   async function addSection(e: FormEvent<HTMLFormElement>) {
@@ -230,19 +315,43 @@ export default function TechnicalGradesPage() {
     if (!selectedSyllabusId) return alert("Vyber technický stupeň.");
 
     const form = new FormData(e.currentTarget);
+    const name = String(form.get("name") || "").trim();
+
+    if (!name) return alert("Vyplň názov sekcie.");
+
+    setWorking(true);
+
     const supabase = createClient();
 
-    const { error } = await supabase.from("syllabus_sections").insert({
-      syllabus_id: selectedSyllabusId,
-      name: String(form.get("name") || "").trim(),
-      description: String(form.get("description") || "").trim() || null,
-      sort_order: Number(form.get("sort_order") || 0),
-      active: true,
-    });
+    const { data, error } = await supabase
+      .from("syllabus_sections")
+      .insert({
+        syllabus_id: selectedSyllabusId,
+        name,
+        description: String(form.get("description") || "").trim() || null,
+        sort_order: Number(form.get("sort_order") || 0),
+        active: true,
+      })
+      .select("*")
+      .single();
+
+    setWorking(false);
 
     if (error) return alert(error.message);
+
+    if (data) {
+      setSections((prev) =>
+        [...prev, data].sort(
+          (a, b) =>
+            Number(a.sort_order || 0) - Number(b.sort_order || 0) ||
+            String(a.name).localeCompare(String(b.name))
+        )
+      );
+      setOpenSections((prev) => ({ ...prev, [data.id]: true }));
+      setImportSectionId(data.id);
+    }
+
     e.currentTarget.reset();
-    loadData();
   }
 
   async function addTechnique(e: FormEvent<HTMLFormElement>, sectionId: string) {
@@ -250,25 +359,96 @@ export default function TechnicalGradesPage() {
     if (!canManage) return alert("Nemáš oprávnenie spravovať techniky.");
 
     const form = new FormData(e.currentTarget);
+    const name = String(form.get("name") || "").trim();
+
+    if (!name) return alert("Vyplň názov techniky.");
+
+    setWorking(true);
+
     const supabase = createClient();
 
-    const { error } = await supabase.from("syllabus_techniques").insert({
-      section_id: sectionId,
-      name: String(form.get("name") || "").trim(),
-      description: String(form.get("description") || "").trim() || null,
-      sort_order: Number(form.get("sort_order") || 0),
-      active: true,
-    });
+    const { data, error } = await supabase
+      .from("syllabus_techniques")
+      .insert({
+        section_id: sectionId,
+        name,
+        description: String(form.get("description") || "").trim() || null,
+        sort_order: Number(form.get("sort_order") || 0),
+        active: true,
+      })
+      .select("*")
+      .single();
+
+    setWorking(false);
 
     if (error) return alert(error.message);
+
+    if (data) {
+      setTechniques((prev) =>
+        [...prev, data].sort(
+          (a, b) =>
+            Number(a.sort_order || 0) - Number(b.sort_order || 0) ||
+            String(a.name).localeCompare(String(b.name))
+        )
+      );
+    }
+
     e.currentTarget.reset();
-    loadData();
+  }
+
+  async function importTechniquesFromText() {
+    if (!canManage) return alert("Nemáš oprávnenie importovať techniky.");
+    if (!importSectionId) return alert("Vyber sekciu, do ktorej chceš importovať.");
+    if (!importText.trim()) return alert("Vlož techniky. Každá technika na nový riadok.");
+
+    const rows = parseImportText(importText).map((row) => ({
+      section_id: importSectionId,
+      name: row.name,
+      description: row.description,
+      sort_order: row.sort_order,
+      active: true,
+    }));
+
+    if (rows.length === 0) return alert("Nenašli sa techniky na import.");
+
+    setWorking(true);
+
+    const supabase = createClient();
+
+    const { data, error } = await supabase
+      .from("syllabus_techniques")
+      .insert(rows)
+      .select("*");
+
+    setWorking(false);
+
+    if (error) return alert(error.message);
+
+    if (data) {
+      setTechniques((prev) =>
+        [...prev, ...(data as Technique[])].sort(
+          (a, b) =>
+            Number(a.sort_order || 0) - Number(b.sort_order || 0) ||
+            String(a.name).localeCompare(String(b.name))
+        )
+      );
+      setOpenSections((prev) => ({ ...prev, [importSectionId]: true }));
+    }
+
+    setImportText("");
+    alert(`Import hotový. Pridané techniky: ${rows.length}`);
+  }
+
+  async function importTechniquesFile(file: File) {
+    const text = await file.text();
+    setImportText(text);
   }
 
   async function toggleTechnique(techniqueId: string) {
     if (!canPractice) return alert("Nemáš oprávnenie označovať odcvičené techniky.");
 
     const supabase = createClient();
+
     const existing = logs.find(
       (l) =>
         l.technique_id === techniqueId &&
@@ -284,6 +464,7 @@ export default function TechnicalGradesPage() {
         .eq("id", existing.id);
 
       if (error) return alert(error.message);
+
       setLogs((prev) => prev.filter((l) => l.id !== existing.id));
       return;
     }
@@ -310,8 +491,10 @@ export default function TechnicalGradesPage() {
 
     const supabase = createClient();
     const { error } = await supabase.from("syllabus_techniques").delete().eq("id", id);
+
     if (error) return alert(error.message);
-    loadData();
+
+    setTechniques((prev) => prev.filter((t) => t.id !== id));
   }
 
   async function deleteSection(id: string) {
@@ -320,14 +503,17 @@ export default function TechnicalGradesPage() {
 
     const supabase = createClient();
     const { error } = await supabase.from("syllabus_sections").delete().eq("id", id);
+
     if (error) return alert(error.message);
-    loadData();
+
+    setSections((prev) => prev.filter((s) => s.id !== id));
+    setTechniques((prev) => prev.filter((t) => t.section_id !== id));
   }
 
   const inputClass =
-    "h-[54px] w-full min-w-0 rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 text-base font-bold outline-none focus:border-[#d71920] focus:bg-white";
+    "box-border h-[54px] w-full min-w-0 max-w-full appearance-none rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 text-left text-base font-bold outline-none focus:border-[#d71920] focus:bg-white";
   const textareaClass =
-    "min-h-[90px] w-full min-w-0 rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 py-3 text-base font-semibold outline-none focus:border-[#d71920] focus:bg-white";
+    "box-border min-h-[90px] w-full min-w-0 max-w-full rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 py-3 text-base font-semibold outline-none focus:border-[#d71920] focus:bg-white";
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-[#f7f2e8] px-4 py-6 pb-40 sm:px-5 space-y-6">
@@ -340,7 +526,9 @@ export default function TechnicalGradesPage() {
           <p className="text-sm font-bold uppercase tracking-[0.18em] text-white/45">
             Technické stupne
           </p>
-          <h1 className="mt-2 text-4xl font-black tracking-tight">Syllabus tréningu</h1>
+          <h1 className="mt-2 text-4xl font-black tracking-tight">
+            Syllabus tréningu
+          </h1>
           <p className="mt-3 max-w-2xl text-white/65">
             Vytvor sekcie a techniky podľa stupňov. Počas tréningu tréner označí,
             čo už bolo odcvičené.
@@ -367,18 +555,20 @@ export default function TechnicalGradesPage() {
         </div>
       </div>
 
-      <div className="rounded-[30px] bg-white p-5 shadow-sm ring-1 ring-black/10 space-y-4">
+      <div className="rounded-[30px] bg-white p-4 shadow-sm ring-1 ring-black/10 sm:p-5 space-y-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#f7f2e8] text-[#d71920]">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#f7f2e8] text-[#d71920]">
             <ClipboardList />
           </div>
-          <div>
-            <p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">Výber tréningu</p>
-            <h2 className="text-2xl font-black">Čo ideme cvičiť</h2>
+          <div className="min-w-0">
+            <p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">
+              Výber tréningu
+            </p>
+            <h2 className="break-words text-2xl font-black">Čo ideme cvičiť</h2>
           </div>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-4">
+        <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-4">
           <select
             value={selectedSyllabusId}
             onChange={(e) => setSelectedSyllabusId(e.target.value)}
@@ -387,17 +577,23 @@ export default function TechnicalGradesPage() {
             <option value="">Vyber stupeň</option>
             {syllabi.map((s) => (
               <option key={s.id} value={s.id}>
-                {s.grade_name} · {gradeTypeLabel(s.grade_type)}
+                {gradeSelectLabel(s)}
               </option>
             ))}
           </select>
 
-          <input
-            type="date"
-            value={practiceDate}
-            onChange={(e) => setPracticeDate(e.target.value)}
-            className={inputClass}
-          />
+          <div className="relative min-w-0">
+            <CalendarDays
+              size={18}
+              className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-black/35"
+            />
+            <input
+              type="date"
+              value={practiceDate}
+              onChange={(e) => setPracticeDate(e.target.value)}
+              className={`${inputClass} pl-11 text-center`}
+            />
+          </div>
 
           <select
             value={selectedDojoId}
@@ -439,48 +635,164 @@ export default function TechnicalGradesPage() {
 
       {canManage && (
         <div className="grid gap-4 lg:grid-cols-2">
-          <form onSubmit={addSyllabus} className="rounded-[30px] bg-white p-5 shadow-sm ring-1 ring-black/10 space-y-3">
+          <form
+            onSubmit={addSyllabus}
+            className="rounded-[30px] bg-white p-5 shadow-sm ring-1 ring-black/10 space-y-3"
+          >
             <div className="flex items-center gap-3">
               <Award className="text-[#d71920]" />
               <h2 className="text-xl font-black">Pridať stupeň</h2>
             </div>
-            <input name="grade_name" required placeholder="Napr. 9. kyu alebo Biely pásik" className={inputClass} />
+
+            <input
+              name="grade_name"
+              required
+              placeholder="Napr. 9. kyu alebo Biely pásik"
+              className={inputClass}
+            />
+
             <div className="grid gap-3 sm:grid-cols-2">
               <select name="grade_type" className={inputClass} defaultValue="kyu_dan">
                 {gradeTypes.map((g) => (
-                  <option key={g.key} value={g.key}>{g.label}</option>
+                  <option key={g.key} value={g.key}>
+                    {g.label}
+                  </option>
                 ))}
               </select>
-              <input name="sort_order" type="number" placeholder="Poradie" className={inputClass} />
+              <input
+                name="sort_order"
+                type="number"
+                placeholder="Poradie"
+                className={inputClass}
+              />
             </div>
-            <button className="inline-flex h-[56px] w-full items-center justify-center gap-2 rounded-2xl bg-[#111] px-4 font-black text-white active:scale-[0.98]">
+
+            <button
+              disabled={working}
+              className="inline-flex h-[56px] w-full items-center justify-center gap-2 rounded-2xl bg-[#111] px-4 font-black text-white active:scale-[0.98] disabled:opacity-60"
+            >
               <Plus size={20} /> Pridať stupeň
             </button>
           </form>
 
-          <form onSubmit={addSection} className="rounded-[30px] bg-white p-5 shadow-sm ring-1 ring-black/10 space-y-3">
+          <form
+            onSubmit={addSection}
+            className="rounded-[30px] bg-white p-5 shadow-sm ring-1 ring-black/10 space-y-3"
+          >
             <div className="flex items-center gap-3">
               <Layers3 className="text-[#d71920]" />
               <h2 className="text-xl font-black">Pridať sekciu do stupňa</h2>
             </div>
-            <input name="name" required placeholder="Napr. Kihon, Kata, Kumite" className={inputClass} />
-            <textarea name="description" placeholder="Poznámka k sekcii" className={textareaClass} />
-            <input name="sort_order" type="number" placeholder="Poradie" className={inputClass} />
-            <button className="inline-flex h-[56px] w-full items-center justify-center gap-2 rounded-2xl bg-[#d71920] px-4 font-black text-white active:scale-[0.98]">
+
+            <input
+              name="name"
+              required
+              placeholder="Napr. Kihon, Kata, Kumite"
+              className={inputClass}
+            />
+
+            <textarea
+              name="description"
+              placeholder="Poznámka k sekcii"
+              className={textareaClass}
+            />
+
+            <input
+              name="sort_order"
+              type="number"
+              placeholder="Poradie"
+              className={inputClass}
+            />
+
+            <button
+              disabled={working}
+              className="inline-flex h-[56px] w-full items-center justify-center gap-2 rounded-2xl bg-[#d71920] px-4 font-black text-white active:scale-[0.98] disabled:opacity-60"
+            >
               <Plus size={20} /> Pridať sekciu
             </button>
           </form>
+
+          <div className="rounded-[30px] bg-white p-5 shadow-sm ring-1 ring-black/10 space-y-3 lg:col-span-2">
+            <div className="flex items-center gap-3">
+              <FileUp className="text-[#d71920]" />
+              <div>
+                <h2 className="text-xl font-black">Import techník</h2>
+                <p className="text-sm font-semibold text-black/50">
+                  Každý riadok = jedna technika. Voliteľne: názov;poznámka
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+              <select
+                value={importSectionId}
+                onChange={(e) => setImportSectionId(e.target.value)}
+                className={inputClass}
+              >
+                <option value="">Vyber sekciu</option>
+                {selectedSections.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+
+              <button
+                type="button"
+                onClick={() => importFileRef.current?.click()}
+                className="inline-flex h-[54px] items-center justify-center gap-2 rounded-2xl bg-black/10 px-4 font-black text-black active:scale-[0.98]"
+              >
+                <FileUp size={18} />
+                Nahrať TXT/CSV
+              </button>
+            </div>
+
+            <textarea
+              value={importText}
+              onChange={(e) => setImportText(e.target.value)}
+              placeholder={"Oi zuki\nGyaku zuki;základný postoj\nMae geri"}
+              className={`${textareaClass} min-h-[150px]`}
+            />
+
+            <input
+              ref={importFileRef}
+              type="file"
+              accept=".txt,.csv,text/plain,text/csv"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) importTechniquesFile(file);
+                e.currentTarget.value = "";
+              }}
+            />
+
+            <button
+              type="button"
+              disabled={working || !importSectionId}
+              onClick={importTechniquesFromText}
+              className="inline-flex h-[56px] w-full items-center justify-center gap-2 rounded-2xl bg-[#111] px-4 font-black text-white active:scale-[0.98] disabled:opacity-50"
+            >
+              <FileUp size={20} />
+              Importovať techniky do sekcie
+            </button>
+          </div>
         </div>
       )}
 
-      <div className="rounded-[30px] bg-white p-5 shadow-sm ring-1 ring-black/10">
+      <div className="rounded-[30px] bg-white p-4 shadow-sm ring-1 ring-black/10 sm:p-5">
         <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">{selectedSyllabus?.grade_name || "Stupeň"}</p>
-            <h2 className="text-2xl font-black">Sekcie a techniky</h2>
+          <div className="min-w-0">
+            <p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">
+              {selectedSyllabus?.grade_name || "Stupeň"}
+            </p>
+            <h2 className="break-words text-2xl font-black">Sekcie a techniky</h2>
           </div>
+
           <div className="relative w-full md:w-[320px]">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-black/35" size={18} />
+            <Search
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-black/35"
+              size={18}
+            />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -491,7 +803,9 @@ export default function TechnicalGradesPage() {
         </div>
 
         {loading ? (
-          <p className="rounded-2xl bg-[#f7f2e8] p-5 text-center font-bold text-black/55">Načítavam...</p>
+          <p className="rounded-2xl bg-[#f7f2e8] p-5 text-center font-bold text-black/55">
+            Načítavam...
+          </p>
         ) : selectedSections.length === 0 ? (
           <p className="rounded-2xl bg-[#f7f2e8] p-5 text-center font-bold text-black/55">
             Tento stupeň ešte nemá sekcie. Pridaj napríklad Kihon.
@@ -504,21 +818,31 @@ export default function TechnicalGradesPage() {
               const done = items.filter((t) => practicedTechniqueIds.has(t.id)).length;
 
               return (
-                <div key={section.id} className="overflow-hidden rounded-[28px] bg-[#f7f2e8] ring-1 ring-black/5">
+                <div
+                  key={section.id}
+                  className="overflow-hidden rounded-[28px] bg-[#f7f2e8] ring-1 ring-black/5"
+                >
                   <button
                     type="button"
-                    onClick={() => setOpenSections((p) => ({ ...p, [section.id]: !isOpen }))}
+                    onClick={() =>
+                      setOpenSections((p) => ({ ...p, [section.id]: !isOpen }))
+                    }
                     className="flex w-full items-center justify-between gap-3 p-4 text-left active:scale-[0.99]"
                   >
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <BookOpen className="text-[#d71920]" size={20} />
-                        <h3 className="break-words text-xl font-black">{section.name}</h3>
+                        <h3 className="break-words text-xl font-black">
+                          {section.name}
+                        </h3>
                       </div>
+
                       <p className="mt-1 text-sm text-black/55">
-                        {done}/{items.length} odcvičené {section.description ? `· ${section.description}` : ""}
+                        {done}/{items.length} odcvičené
+                        {section.description ? ` · ${section.description}` : ""}
                       </p>
                     </div>
+
                     <div className="flex shrink-0 items-center gap-2">
                       {canManage && (
                         <span
@@ -531,29 +855,54 @@ export default function TechnicalGradesPage() {
                           <Trash2 size={16} />
                         </span>
                       )}
-                      <ChevronDown className={`transition ${isOpen ? "rotate-180" : ""}`} />
+                      <ChevronDown
+                        className={`transition ${isOpen ? "rotate-180" : ""}`}
+                      />
                     </div>
                   </button>
 
                   {isOpen && (
                     <div className="border-t border-black/5 p-4 space-y-3">
                       {canManage && (
-                        <form onSubmit={(e) => addTechnique(e, section.id)} className="grid gap-2 rounded-3xl bg-white p-3 md:grid-cols-[1fr_1fr_100px_auto]">
-                          <input name="name" required placeholder="Názov techniky" className={inputClass} />
-                          <input name="description" placeholder="Poznámka" className={inputClass} />
-                          <input name="sort_order" type="number" placeholder="Poradie" className={inputClass} />
-                          <button className="inline-flex h-[54px] items-center justify-center gap-2 rounded-2xl bg-[#111] px-4 font-black text-white">
+                        <form
+                          onSubmit={(e) => addTechnique(e, section.id)}
+                          className="grid gap-2 rounded-3xl bg-white p-3 md:grid-cols-[1fr_1fr_100px_auto]"
+                        >
+                          <input
+                            name="name"
+                            required
+                            placeholder="Názov techniky"
+                            className={inputClass}
+                          />
+                          <input
+                            name="description"
+                            placeholder="Poznámka"
+                            className={inputClass}
+                          />
+                          <input
+                            name="sort_order"
+                            type="number"
+                            placeholder="Poradie"
+                            className={inputClass}
+                          />
+                          <button
+                            disabled={working}
+                            className="inline-flex h-[54px] items-center justify-center gap-2 rounded-2xl bg-[#111] px-4 font-black text-white disabled:opacity-60"
+                          >
                             <Plus size={18} />
                           </button>
                         </form>
                       )}
 
                       {items.length === 0 ? (
-                        <p className="rounded-2xl bg-white p-4 text-center text-sm font-bold text-black/50">Žiadne techniky v sekcii.</p>
+                        <p className="rounded-2xl bg-white p-4 text-center text-sm font-bold text-black/50">
+                          Žiadne techniky v sekcii.
+                        </p>
                       ) : (
                         <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
                           {items.map((technique) => {
                             const doneNow = practicedTechniqueIds.has(technique.id);
+
                             return (
                               <div
                                 key={technique.id}
@@ -565,11 +914,16 @@ export default function TechnicalGradesPage() {
                               >
                                 <div className="flex items-start justify-between gap-3">
                                   <div className="min-w-0">
-                                    <p className="break-words text-lg font-black">{technique.name}</p>
+                                    <p className="break-words text-lg font-black">
+                                      {technique.name}
+                                    </p>
                                     {technique.description && (
-                                      <p className="mt-1 break-words text-sm text-black/55">{technique.description}</p>
+                                      <p className="mt-1 break-words text-sm text-black/55">
+                                        {technique.description}
+                                      </p>
                                     )}
                                   </div>
+
                                   {canManage && (
                                     <button
                                       type="button"
@@ -590,7 +944,11 @@ export default function TechnicalGradesPage() {
                                       : "bg-black/10 text-black"
                                   }`}
                                 >
-                                  {doneNow ? <CheckCircle2 size={20} /> : <Dumbbell size={20} />}
+                                  {doneNow ? (
+                                    <CheckCircle2 size={20} />
+                                  ) : (
+                                    <Dumbbell size={20} />
+                                  )}
                                   {doneNow ? "Odcvičené" : "Označiť"}
                                 </button>
                               </div>
@@ -613,7 +971,6 @@ export default function TechnicalGradesPage() {
           setSelectedDojoId("");
           setSelectedTrainingId("");
           setPracticeDate(today());
-          loadLogsAndTrainings();
         }}
         className="inline-flex h-[58px] w-full items-center justify-center gap-2 rounded-2xl bg-black/10 px-4 font-black text-black active:scale-[0.98]"
       >
