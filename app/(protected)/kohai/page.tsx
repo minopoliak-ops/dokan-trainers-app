@@ -96,7 +96,7 @@ export default function KohaiPage() {
       supabase
         .from("trainers")
         .select("*")
-        .eq("can_manage_trainers", false)
+        .eq("role", "kohai")
         .order("full_name"),
       supabase.from("dojos").select("*").order("name"),
       supabase.from("trainer_dojos").select("*"),
@@ -179,6 +179,7 @@ export default function KohaiPage() {
     const payload = {
       full_name: form.full_name.trim(),
       email: form.email.trim().toLowerCase(),
+      role: "kohai",
       can_attendance: form.can_attendance,
       can_add_students: form.can_add_students,
       can_create_trainings: form.can_create_trainings,

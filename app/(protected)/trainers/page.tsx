@@ -42,8 +42,14 @@ const menus = [
 const roleLabels: Record<string, string> = {
   sensei: "Sensei / admin",
   senpai: "Senpai / tréner",
+  trainer: "Senpai / tréner",
   kohai: "Kōhai / pomocník",
 };
+
+function normalizeRole(role?: string | null) {
+  if (role === "trainer") return "senpai";
+  return role || "senpai";
+}
 
 function roleBadge(role: string) {
   if (role === "sensei") {
@@ -77,6 +83,7 @@ function getDefaultsForRole(role: string) {
         "dashboard",
         "dojo",
         "students",
+        "trainers",
         "trainings",
         "events",
         "topics",
@@ -120,23 +127,33 @@ export default function TrainersPage() {
   const [trainerDojos, setTrainerDojos] = useState<any[]>([]);
   const [kohaiHelpers, setKohaiHelpers] = useState<any[]>([]);
   const [selectedDojoForKohai, setSelectedDojoForKohai] = useState("");
+  const [loading, setLoading] = useState(true);
 
   async function loadData() {
+    if (!isAdmin) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
     const supabase = createClient();
 
-    const [trainersRes, dojosRes, trainerDojosRes, kohaiRes] =
-      await Promise.all([
-        supabase.from("trainers").select("*").order("full_name"),
-        supabase.from("dojos").select("*").order("name"),
-        supabase
-          .from("trainer_dojos")
-          .select("*, dojos(name)")
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("dojo_kohai_helpers")
-          .select("*, dojos(name)")
-          .order("created_at", { ascending: false }),
-      ]);
+    const [trainersRes, dojosRes, trainerDojosRes, kohaiRes] = await Promise.all([
+      supabase
+        .from("trainers")
+        .select("*")
+        .neq("role", "kohai")
+        .order("full_name"),
+      supabase.from("dojos").select("*").order("name"),
+      supabase
+        .from("trainer_dojos")
+        .select("*, dojos(name)")
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("dojo_kohai_helpers")
+        .select("*, dojos(name)")
+        .order("created_at", { ascending: false }),
+    ]);
 
     if (trainersRes.error) return alert(trainersRes.error.message);
     if (dojosRes.error) return alert(dojosRes.error.message);
@@ -151,24 +168,36 @@ export default function TrainersPage() {
     if (!selectedDojoForKohai && (dojosRes.data || []).length > 0) {
       setSelectedDojoForKohai(dojosRes.data?.[0]?.id || "");
     }
+
+    setLoading(false);
   }
 
   useEffect(() => {
-    if (isAdmin) loadData();
+    loadData();
   }, [isAdmin]);
 
   const hierarchyStats = useMemo(() => {
     return {
-      sensei: trainers.filter((t) => (t.role || "senpai") === "sensei").length,
-      senpai: trainers.filter((t) => (t.role || "senpai") === "senpai").length,
+      sensei: trainers.filter((t) => normalizeRole(t.role) === "sensei").length,
+      senpai: trainers.filter((t) => normalizeRole(t.role) === "senpai").length,
       kohai: kohaiHelpers.filter((k) => k.active !== false).length,
     };
   }, [trainers, kohaiHelpers]);
 
-  if (myPermissions && !isAdmin) {
+  if (!myPermissions || loading) {
     return (
       <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40">
-        <div className="rounded-3xl bg-white p-6 text-center shadow-sm">
+        <div className="rounded-3xl bg-white p-6 text-center font-bold shadow-sm">
+          Načítavam trénerov...
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAdmin) {
+    return (
+      <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40">
+        <div className="rounded-3xl bg-white p-6 text-center font-bold shadow-sm">
           Nemáš oprávnenie spravovať trénerov.
         </div>
       </div>
@@ -187,7 +216,7 @@ export default function TrainersPage() {
 
     const { error } = await supabase.from("trainers").insert({
       full_name: String(form.get("full_name") || "").trim(),
-      email: String(form.get("email") || "").trim(),
+      email: String(form.get("email") || "").trim().toLowerCase(),
       phone: String(form.get("phone") || "").trim() || null,
       role,
       active: true,
@@ -231,10 +260,7 @@ export default function TrainersPage() {
   }
 
   async function toggleMenu(trainer: any, key: string) {
-    const current = Array.isArray(trainer.visible_menu)
-      ? trainer.visible_menu
-      : [];
-
+    const current = Array.isArray(trainer.visible_menu) ? trainer.visible_menu : [];
     const next = current.includes(key)
       ? current.filter((item: string) => item !== key)
       : [...current, key];
@@ -256,6 +282,7 @@ export default function TrainersPage() {
 
     const supabase = createClient();
 
+    await supabase.from("trainer_dojos").delete().eq("trainer_id", id);
     const { error } = await supabase.from("trainers").delete().eq("id", id);
 
     if (error) return alert(error.message);
@@ -286,10 +313,7 @@ export default function TrainersPage() {
 
     const supabase = createClient();
 
-    const { error } = await supabase
-      .from("trainer_dojos")
-      .delete()
-      .eq("id", linkId);
+    const { error } = await supabase.from("trainer_dojos").delete().eq("id", linkId);
 
     if (error) return alert(error.message);
 
@@ -330,10 +354,7 @@ export default function TrainersPage() {
 
     const supabase = createClient();
 
-    const { error } = await supabase
-      .from("dojo_kohai_helpers")
-      .delete()
-      .eq("id", id);
+    const { error } = await supabase.from("dojo_kohai_helpers").delete().eq("id", id);
 
     if (error) return alert(error.message);
 
@@ -348,8 +369,11 @@ export default function TrainersPage() {
     return kohaiHelpers.filter((helper) => helper.dojo_id === dojoId);
   }
 
+  const inputClass =
+    "h-[54px] w-full rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 text-base font-bold outline-none focus:border-[#d71920] focus:bg-white";
+
   return (
-    <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40 space-y-6">
+    <div className="min-h-screen overflow-x-hidden bg-[#f7f2e8] px-4 py-6 pb-40 sm:px-5 space-y-6">
       <div className="overflow-hidden rounded-[32px] bg-[#111] text-white shadow-[0_18px_45px_rgba(0,0,0,0.25)]">
         <div className="p-6">
           <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#d71920]">
@@ -414,55 +438,34 @@ export default function TrainersPage() {
           </div>
           <h2 className="text-xl font-black">Kōhai</h2>
           <p className="mt-1 text-sm text-black/55">
-            Pomocník pri dojo. Môže byť jeden alebo viacerí podľa potreby tréningu.
+            Pomocník pri dojo. Ak má mať login, vytvor ho v stránke Kohai prístupy.
           </p>
         </div>
       </div>
 
       <form
         onSubmit={addTrainer}
-        className="grid gap-3 rounded-[28px] bg-white p-5 shadow-sm ring-1 ring-black/10 md:grid-cols-2"
+        className="grid gap-3 rounded-[30px] bg-white p-5 shadow-sm ring-1 ring-black/10 md:grid-cols-2"
       >
         <div className="md:col-span-2">
-          <h2 className="text-xl font-black">Pridať trénera / senpaia</h2>
+          <h2 className="text-2xl font-black">Pridať trénera / senpaia</h2>
           <p className="mt-1 text-sm text-black/50">
             Tréner je používateľ aplikácie s vlastnými oprávneniami a menu.
           </p>
         </div>
 
-        <input
-          name="full_name"
-          required
-          placeholder="Meno trénera"
-          className="h-[52px] w-full rounded-2xl border border-black/10 bg-[#fafafa] px-4"
-        />
+        <input name="full_name" required placeholder="Meno trénera" className={inputClass} />
+        <input name="email" type="email" required placeholder="Email" className={inputClass} />
+        <input name="phone" placeholder="Telefón" className={inputClass} />
 
-        <input
-          name="email"
-          type="email"
-          required
-          placeholder="Email"
-          className="h-[52px] w-full rounded-2xl border border-black/10 bg-[#fafafa] px-4"
-        />
-
-        <input
-          name="phone"
-          placeholder="Telefón"
-          className="h-[52px] w-full rounded-2xl border border-black/10 bg-[#fafafa] px-4"
-        />
-
-        <select
-          name="role"
-          defaultValue="senpai"
-          className="h-[52px] w-full rounded-2xl border border-black/10 bg-[#fafafa] px-4"
-        >
+        <select name="role" defaultValue="senpai" className={inputClass}>
           <option value="sensei">Sensei / admin</option>
           <option value="senpai">Senpai / tréner</option>
-          <option value="kohai">Kōhai / pomocník</option>
         </select>
 
-        <button className="h-[54px] rounded-2xl bg-[#d71920] px-4 font-bold text-white shadow-[0_6px_14px_rgba(215,25,32,0.25)] active:scale-[0.98] md:col-span-2">
-          + Pridať trénera
+        <button className="inline-flex h-[58px] items-center justify-center gap-2 rounded-2xl bg-[#d71920] px-4 font-black text-white shadow-[0_8px_18px_rgba(215,25,32,0.25)] active:scale-[0.98] md:col-span-2">
+          <UserPlus size={20} />
+          Pridať trénera
         </button>
       </form>
 
@@ -475,7 +478,7 @@ export default function TrainersPage() {
           <div>
             <h2 className="text-xl font-black">Kōhai pomocníci podľa dojo</h2>
             <p className="text-sm text-black/55">
-              Tu pridáš mladších pomocníkov k jednotlivým dojo.
+              Toto je iba evidencia pomocníkov. Login a povolenia spravuje stránka Kohai prístupy.
             </p>
           </div>
         </div>
@@ -485,7 +488,7 @@ export default function TrainersPage() {
             name="dojo_id"
             value={selectedDojoForKohai}
             onChange={(e) => setSelectedDojoForKohai(e.target.value)}
-            className="h-[52px] rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 font-bold"
+            className={inputClass}
           >
             <option value="">Vyber dojo</option>
             {dojos.map((dojo) => (
@@ -495,32 +498,16 @@ export default function TrainersPage() {
             ))}
           </select>
 
-          <input
-            name="full_name"
-            required
-            placeholder="Meno kōhai pomocníka"
-            className="h-[52px] rounded-2xl border border-black/10 bg-[#fafafa] px-4"
-          />
-
-          <input
-            name="email"
-            placeholder="Email voliteľné"
-            className="h-[52px] rounded-2xl border border-black/10 bg-[#fafafa] px-4"
-          />
-
-          <input
-            name="phone"
-            placeholder="Telefón voliteľné"
-            className="h-[52px] rounded-2xl border border-black/10 bg-[#fafafa] px-4"
-          />
-
+          <input name="full_name" required placeholder="Meno kōhai pomocníka" className={inputClass} />
+          <input name="email" placeholder="Email voliteľné" className={inputClass} />
+          <input name="phone" placeholder="Telefón voliteľné" className={inputClass} />
           <input
             name="note"
             placeholder="Poznámka, napr. pomáha pri deťoch"
-            className="h-[52px] rounded-2xl border border-black/10 bg-[#fafafa] px-4 md:col-span-2"
+            className={`${inputClass} md:col-span-2`}
           />
 
-          <button className="h-[54px] rounded-2xl bg-amber-500 px-4 font-black text-white active:scale-[0.98] md:col-span-2">
+          <button className="h-[58px] rounded-2xl bg-amber-500 px-4 font-black text-white active:scale-[0.98] md:col-span-2">
             + Pridať kōhai k dojo
           </button>
         </form>
@@ -530,15 +517,10 @@ export default function TrainersPage() {
             const helpers = getKohaiForDojo(dojo.id);
 
             return (
-              <div
-                key={dojo.id}
-                className="rounded-3xl bg-[#f7f2e8] p-4 ring-1 ring-black/5"
-              >
+              <div key={dojo.id} className="rounded-3xl bg-[#f7f2e8] p-4 ring-1 ring-black/5">
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-black/35">
-                      Dojo
-                    </p>
+                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-black/35">Dojo</p>
                     <h3 className="text-lg font-black">{dojo.name}</h3>
                   </div>
 
@@ -554,19 +536,12 @@ export default function TrainersPage() {
                 ) : (
                   <div className="grid gap-2">
                     {helpers.map((helper) => (
-                      <div
-                        key={helper.id}
-                        className="rounded-2xl bg-white p-4 shadow-sm"
-                      >
+                      <div key={helper.id} className="rounded-2xl bg-white p-4 shadow-sm">
                         <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="font-black">{helper.full_name}</p>
-                            <p className="text-sm text-black/50">
-                              {helper.email || "Bez emailu"}
-                            </p>
-                            <p className="text-sm text-black/50">
-                              {helper.phone || ""}
-                            </p>
+                          <div className="min-w-0">
+                            <p className="break-words font-black">{helper.full_name}</p>
+                            <p className="break-all text-sm text-black/50">{helper.email || "Bez emailu"}</p>
+                            <p className="text-sm text-black/50">{helper.phone || ""}</p>
                           </div>
 
                           <button
@@ -603,38 +578,22 @@ export default function TrainersPage() {
         {trainers.map((trainer) => {
           const assigned = getTrainerDojos(trainer.id);
           const assignedIds = assigned.map((item) => item.dojo_id);
-          const availableDojos = dojos.filter(
-            (dojo) => !assignedIds.includes(dojo.id)
-          );
-
-          const visibleMenu = Array.isArray(trainer.visible_menu)
-            ? trainer.visible_menu
-            : [];
-
-          const role = trainer.role || "senpai";
+          const availableDojos = dojos.filter((dojo) => !assignedIds.includes(dojo.id));
+          const visibleMenu = Array.isArray(trainer.visible_menu) ? trainer.visible_menu : [];
+          const role = normalizeRole(trainer.role);
 
           return (
-            <div
-              key={trainer.id}
-              className="rounded-[28px] bg-white p-5 shadow-sm ring-1 ring-black/10"
-            >
+            <div key={trainer.id} className="rounded-[30px] bg-white p-5 shadow-sm ring-1 ring-black/10">
               <div className="mb-5 flex items-start justify-between gap-4">
-                <div>
+                <div className="min-w-0">
                   <div className="mb-2 flex flex-wrap items-center gap-2">
-                    <h2 className="text-2xl font-extrabold">
-                      {trainer.full_name}
-                    </h2>
-
-                    <span
-                      className={`rounded-full px-3 py-1 text-xs font-black ${roleBadge(
-                        role
-                      )}`}
-                    >
+                    <h2 className="break-words text-2xl font-black">{trainer.full_name}</h2>
+                    <span className={`rounded-full px-3 py-1 text-xs font-black ${roleBadge(role)}`}>
                       {roleLabels[role] || role}
                     </span>
                   </div>
 
-                  <p className="text-sm text-black/60">{trainer.email}</p>
+                  <p className="break-all text-sm text-black/60">{trainer.email}</p>
                   <p className="text-sm text-black/60">{trainer.phone || ""}</p>
                 </div>
 
@@ -648,8 +607,7 @@ export default function TrainersPage() {
               </div>
 
               <div className="mb-6 rounded-3xl bg-[#f7f2e8] p-4">
-                <h3 className="mb-3 font-extrabold">Úroveň v hierarchii</h3>
-
+                <h3 className="mb-3 font-black">Úroveň v hierarchii</h3>
                 <select
                   value={role}
                   onChange={(e) => updateTrainerRole(trainer.id, e.target.value)}
@@ -657,17 +615,14 @@ export default function TrainersPage() {
                 >
                   <option value="sensei">Sensei / admin</option>
                   <option value="senpai">Senpai / tréner</option>
-                  <option value="kohai">Kōhai / pomocník</option>
                 </select>
               </div>
 
               <div className="mb-6 rounded-3xl bg-[#f7f2e8] p-4">
-                <h3 className="mb-3 font-extrabold">Priradené dojo</h3>
+                <h3 className="mb-3 font-black">Priradené dojo</h3>
 
                 {assigned.length === 0 ? (
-                  <p className="mb-3 text-sm text-black/50">
-                    Tréner nemá priradené žiadne dojo.
-                  </p>
+                  <p className="mb-3 text-sm text-black/50">Tréner nemá priradené žiadne dojo.</p>
                 ) : (
                   <div className="mb-3 flex flex-wrap gap-2">
                     {assigned.map((link) => (
@@ -702,18 +657,15 @@ export default function TrainersPage() {
               </div>
 
               <div className="mb-6">
-                <h3 className="mb-3 font-extrabold">Oprávnenia</h3>
-
+                <h3 className="mb-3 font-black">Oprávnenia</h3>
                 <div className="grid gap-2 md:grid-cols-2">
                   {permissions.map(([key, label]) => (
                     <button
                       type="button"
                       key={key}
                       onClick={() => togglePermission(trainer, key)}
-                      className={`rounded-2xl px-4 py-3 text-left font-semibold ${
-                        trainer[key]
-                          ? "bg-green-100 text-green-800"
-                          : "bg-black/5 text-black/60"
+                      className={`rounded-2xl px-4 py-3 text-left font-semibold active:scale-[0.98] ${
+                        trainer[key] ? "bg-green-100 text-green-800" : "bg-black/5 text-black/60"
                       }`}
                     >
                       {trainer[key] ? "✓ " : "○ "}
@@ -724,18 +676,15 @@ export default function TrainersPage() {
               </div>
 
               <div>
-                <h3 className="mb-3 font-extrabold">Viditeľné menu</h3>
-
+                <h3 className="mb-3 font-black">Viditeľné menu</h3>
                 <div className="flex flex-wrap gap-2">
                   {menus.map(([key, label]) => (
                     <button
                       type="button"
                       key={key}
                       onClick={() => toggleMenu(trainer, key)}
-                      className={`rounded-2xl px-4 py-2 font-bold ${
-                        visibleMenu.includes(key)
-                          ? "bg-[#d71920] text-white"
-                          : "bg-black/10 text-black"
+                      className={`rounded-2xl px-4 py-2 font-bold active:scale-[0.98] ${
+                        visibleMenu.includes(key) ? "bg-[#d71920] text-white" : "bg-black/10 text-black"
                       }`}
                     >
                       {label}
