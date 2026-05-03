@@ -11,7 +11,7 @@ const items = [
   {
     title: "Technické stupne",
     subtitle: "Techniky podľa pásov, kyu a dan stupňov",
-    href: "/more/technical-grades",
+    href: "/more/technical-grade",
     Icon: GraduationCap,
     badge: "Nové",
     external: false,
