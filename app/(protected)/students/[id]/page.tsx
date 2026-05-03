@@ -31,6 +31,8 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
   const canDelete = permissions?.can_delete_students || permissions?.can_manage_trainers;
 
   async function loadData() {
+    setLoading(true);
+
     const supabase = createClient();
 
     const studentRes = await supabase
@@ -40,6 +42,14 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
       .single();
 
     const dojosRes = await supabase.from("dojos").select("*").order("name");
+
+    if (studentRes.error) {
+      console.error(studentRes.error.message);
+      setStudent(null);
+      setDojos(dojosRes.data || []);
+      setLoading(false);
+      return;
+    }
 
     setStudent(studentRes.data);
     setDojos(dojosRes.data || []);
@@ -62,17 +72,20 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
   const contactPhone = useMemo(() => {
     if (!student) return "";
     return isAdult
-      ? student.parent_phone || student.phone || ""
+      ? student.phone || student.parent_phone || ""
       : student.parent_phone || student.phone || "";
   }, [student, isAdult]);
 
   const contactEmail = useMemo(() => {
     if (!student) return "";
-    return student.parent_email || student.email || "";
-  }, [student]);
+    return isAdult
+      ? student.email || student.parent_email || ""
+      : student.parent_email || student.email || "";
+  }, [student, isAdult]);
 
   async function saveStudent() {
     if (!canEdit) return alert("Nemáš oprávnenie upravovať žiaka.");
+    if (!student) return;
 
     setSaving(true);
     const supabase = createClient();
@@ -86,9 +99,11 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
         last_name: payload.last_name || null,
         birth_year: payload.birth_year ? Number(payload.birth_year) : null,
         is_adult: !!payload.is_adult,
-        parent_name: payload.parent_name || null,
-        parent_phone: payload.parent_phone || null,
-        parent_email: payload.parent_email || null,
+        parent_name: payload.is_adult ? null : payload.parent_name || null,
+        parent_phone: payload.is_adult ? null : payload.parent_phone || null,
+        parent_email: payload.is_adult ? null : payload.parent_email || null,
+        phone: payload.is_adult ? payload.phone || payload.parent_phone || null : null,
+        email: payload.is_adult ? payload.email || payload.parent_email || null : null,
         health_info: payload.health_info || null,
         medication_info: payload.medication_info || null,
         technical_grade: payload.technical_grade || null,
@@ -124,19 +139,20 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
   }
 
   const inputClass =
-    "box-border h-[54px] w-full min-w-0 max-w-full rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 text-base font-bold outline-none focus:border-[#d71920] focus:bg-white disabled:opacity-60";
+    "box-border h-[54px] w-full min-w-0 max-w-full rounded-2xl border border-black/10 bg-white px-4 text-[16px] font-bold outline-none ring-0 transition focus:border-[#d71920] focus:bg-white disabled:opacity-60";
+
+  const inputCreamClass =
+    "box-border h-[54px] w-full min-w-0 max-w-full rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 text-[16px] font-bold outline-none ring-0 transition focus:border-[#d71920] focus:bg-white disabled:opacity-60";
 
   const labelClass = "mb-2 block text-sm font-black text-black/55";
 
   const textAreaClass =
-    "box-border min-h-[120px] w-full min-w-0 max-w-full rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 py-3 text-base font-semibold outline-none focus:border-[#d71920] focus:bg-white disabled:opacity-60";
+    "box-border min-h-[120px] w-full min-w-0 max-w-full resize-none rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 py-3 text-[16px] font-semibold outline-none ring-0 transition focus:border-[#d71920] focus:bg-white disabled:opacity-60";
 
   if (loading) {
     return (
       <div className="min-h-screen overflow-x-hidden bg-[#f7f2e8] px-4 py-6 pb-40 sm:px-5">
-        <div className="rounded-3xl bg-white p-6 shadow-sm">
-          Načítavam profil...
-        </div>
+        <div className="rounded-3xl bg-white p-6 shadow-sm">Načítavam profil...</div>
       </div>
     );
   }
@@ -144,15 +160,13 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
   if (!student) {
     return (
       <div className="min-h-screen overflow-x-hidden bg-[#f7f2e8] px-4 py-6 pb-40 sm:px-5">
-        <div className="rounded-3xl bg-white p-6 shadow-sm">
-          Cvičiaci sa nenašiel.
-        </div>
+        <div className="rounded-3xl bg-white p-6 shadow-sm">Cvičiaci sa nenašiel.</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-[#f7f2e8] px-4 py-6 pb-40 sm:px-5 space-y-6">
+    <div className="min-h-screen space-y-6 overflow-x-hidden bg-[#f7f2e8] px-4 py-6 pb-40 sm:px-5">
       <div className="overflow-hidden rounded-[32px] bg-[#111] text-white shadow-[0_18px_45px_rgba(0,0,0,0.25)]">
         <div className="min-w-0 p-6">
           <div
@@ -171,38 +185,29 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
             {student.first_name} {student.last_name}
           </h1>
 
-          <p className="mt-2 max-w-2xl text-white/65">
-            {student.dojos?.name || "Bez dojo"} ·{" "}
-            {student.technical_grade || "Bez technického stupňa"}
+          <p className="mt-2 max-w-2xl break-words text-white/65">
+            {student.dojos?.name || "Bez dojo"} · {student.technical_grade || "Bez technického stupňa"}
           </p>
 
           <div className="mt-6 grid min-w-0 gap-3 md:grid-cols-4">
             <div className="min-w-0 rounded-2xl bg-white/10 p-4">
               <p className="text-sm text-white/50">Typ</p>
-              <p className="truncate text-2xl font-black">
-                {isAdult ? "Dospelý" : "Dieťa"}
-              </p>
+              <p className="truncate text-2xl font-black">{isAdult ? "Dospelý" : "Dieťa"}</p>
             </div>
 
             <div className="min-w-0 rounded-2xl bg-white/10 p-4">
               <p className="text-sm text-white/50">Rok narodenia</p>
-              <p className="truncate text-2xl font-black">
-                {student.birth_year || "—"}
-              </p>
+              <p className="truncate text-2xl font-black">{student.birth_year || "—"}</p>
             </div>
 
             <div className="min-w-0 rounded-2xl bg-white/10 p-4">
               <p className="text-sm text-white/50">Stupeň</p>
-              <p className="truncate text-2xl font-black">
-                {student.technical_grade || "—"}
-              </p>
+              <p className="truncate text-2xl font-black">{student.technical_grade || "—"}</p>
             </div>
 
             <div className="min-w-0 rounded-2xl bg-white/10 p-4">
               <p className="text-sm text-white/50">Skúšanie</p>
-              <p className="truncate text-2xl font-black">
-                {student.last_grading_date || "—"}
-              </p>
+              <p className="truncate text-2xl font-black">{student.last_grading_date || "—"}</p>
             </div>
           </div>
         </div>
@@ -287,7 +292,7 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
               {isAdult ? "Meno dospelého cvičiaceho" : "Meno dieťaťa"}
             </label>
             <input
-              className={inputClass}
+              className={inputCreamClass}
               value={student.first_name || ""}
               disabled={!canEdit}
               onChange={(e) => updateField("first_name", e.target.value)}
@@ -299,7 +304,7 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
               {isAdult ? "Priezvisko dospelého cvičiaceho" : "Priezvisko dieťaťa"}
             </label>
             <input
-              className={inputClass}
+              className={inputCreamClass}
               value={student.last_name || ""}
               disabled={!canEdit}
               onChange={(e) => updateField("last_name", e.target.value)}
@@ -309,7 +314,7 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
           <div className="min-w-0">
             <label className={labelClass}>Rok narodenia</label>
             <input
-              className={inputClass}
+              className={inputCreamClass}
               type="number"
               value={student.birth_year || ""}
               disabled={!canEdit}
@@ -320,7 +325,7 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
           <div className="min-w-0">
             <label className={labelClass}>Dojo</label>
             <select
-              className={inputClass}
+              className={inputCreamClass}
               value={student.dojo_id || ""}
               disabled={!canEdit}
               onChange={(e) => updateField("dojo_id", e.target.value)}
@@ -333,37 +338,63 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
               ))}
             </select>
           </div>
+        </div>
+      </div>
 
+      <div className="min-w-0 overflow-hidden rounded-[30px] bg-white p-4 shadow-sm ring-1 ring-black/10 sm:p-5">
+        <div className="rounded-[26px] bg-[#f7f2e8] p-4">
           <div className="min-w-0">
-            <label className={labelClass}>Technický stupeň</label>
-            <div className="relative min-w-0">
-              <GraduationCap
-                size={18}
-                className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-black/35"
-              />
-              <input
-                className={`${inputClass} pl-11`}
-                value={student.technical_grade || ""}
-                disabled={!canEdit}
-                onChange={(e) => updateField("technical_grade", e.target.value)}
-              />
-            </div>
+            <p className="text-sm font-black uppercase tracking-[0.18em] text-black/35">
+              Technický stupeň
+            </p>
+            <h2 className="mt-1 break-words text-2xl font-black">Páskovanie / skúšky</h2>
           </div>
 
-          <div className="min-w-0">
-            <label className={labelClass}>Dátum posledného skúšania / páskovania</label>
-            <div className="relative min-w-0">
-              <CalendarDays
-                size={18}
-                className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-black/35"
-              />
-              <input
-                type="date"
-                className={`${inputClass} pl-11`}
-                value={student.last_grading_date || ""}
-                disabled={!canEdit}
-                onChange={(e) => updateField("last_grading_date", e.target.value)}
-              />
+          <div className="mt-5 grid min-w-0 gap-4 md:grid-cols-2">
+            <div className="min-w-0">
+              <label className={labelClass}>
+                <span className="inline-flex min-w-0 items-center gap-2">
+                  <GraduationCap size={17} className="shrink-0" />
+                  <span className="break-words">Technický stupeň</span>
+                </span>
+              </label>
+
+              <div className="relative min-w-0">
+                <GraduationCap
+                  size={18}
+                  className="pointer-events-none absolute left-4 top-1/2 z-10 -translate-y-1/2 text-black/35"
+                />
+                <input
+                  className={`${inputClass} pl-11 pr-4`}
+                  value={student.technical_grade || ""}
+                  disabled={!canEdit}
+                  placeholder="Technický stupeň"
+                  onChange={(e) => updateField("technical_grade", e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="min-w-0">
+              <label className={labelClass}>
+                <span className="inline-flex min-w-0 items-center gap-2">
+                  <CalendarDays size={17} className="shrink-0" />
+                  <span className="break-words">Dátum skúšok</span>
+                </span>
+              </label>
+
+              <div className="relative min-w-0">
+                <CalendarDays
+                  size={18}
+                  className="pointer-events-none absolute left-4 top-1/2 z-10 -translate-y-1/2 text-black/35"
+                />
+                <input
+                  type="date"
+                  className={`${inputClass} pl-11 pr-4`}
+                  value={student.last_grading_date || ""}
+                  disabled={!canEdit}
+                  onChange={(e) => updateField("last_grading_date", e.target.value)}
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -371,9 +402,7 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
 
       <div className="min-w-0 space-y-5 overflow-hidden rounded-[30px] bg-white p-4 shadow-sm ring-1 ring-black/10 sm:p-5">
         <div className="min-w-0">
-          <p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">
-            Kontakt
-          </p>
+          <p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">Kontakt</p>
           <h2 className="break-words text-2xl font-black">
             {isAdult ? "Kontakt cvičiaceho" : "Kontakt rodiča"}
           </h2>
@@ -384,7 +413,7 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
             <div className="min-w-0 md:col-span-2">
               <label className={labelClass}>Meno a priezvisko rodiča</label>
               <input
-                className={inputClass}
+                className={inputCreamClass}
                 value={student.parent_name || ""}
                 disabled={!canEdit}
                 onChange={(e) => updateField("parent_name", e.target.value)}
@@ -393,27 +422,23 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
           )}
 
           <div className="min-w-0">
-            <label className={labelClass}>
-              {isAdult ? "Telefón cvičiaceho" : "Telefón rodiča"}
-            </label>
+            <label className={labelClass}>{isAdult ? "Telefón cvičiaceho" : "Telefón rodiča"}</label>
             <input
-              className={inputClass}
-              value={student.parent_phone || ""}
+              className={inputCreamClass}
+              value={isAdult ? student.phone || student.parent_phone || "" : student.parent_phone || ""}
               disabled={!canEdit}
-              onChange={(e) => updateField("parent_phone", e.target.value)}
+              onChange={(e) => updateField(isAdult ? "phone" : "parent_phone", e.target.value)}
             />
           </div>
 
           <div className="min-w-0">
-            <label className={labelClass}>
-              {isAdult ? "Email cvičiaceho" : "Email rodiča"}
-            </label>
+            <label className={labelClass}>{isAdult ? "Email cvičiaceho" : "Email rodiča"}</label>
             <input
-              className={inputClass}
+              className={inputCreamClass}
               type="email"
-              value={student.parent_email || ""}
+              value={isAdult ? student.email || student.parent_email || "" : student.parent_email || ""}
               disabled={!canEdit}
-              onChange={(e) => updateField("parent_email", e.target.value)}
+              onChange={(e) => updateField(isAdult ? "email" : "parent_email", e.target.value)}
             />
           </div>
         </div>
@@ -474,6 +499,7 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
       <div className="grid min-w-0 gap-3 md:grid-cols-2">
         {canEdit && (
           <button
+            type="button"
             onClick={saveStudent}
             disabled={saving}
             className="inline-flex h-[58px] min-w-0 items-center justify-center gap-2 rounded-2xl bg-[#d71920] px-4 font-black text-white shadow-[0_8px_18px_rgba(215,25,32,0.25)] active:scale-[0.98] disabled:opacity-60"
@@ -485,6 +511,7 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
 
         {canDelete && (
           <button
+            type="button"
             onClick={deleteStudent}
             className="inline-flex h-[58px] min-w-0 items-center justify-center gap-2 rounded-2xl bg-[#111] px-4 font-black text-white active:scale-[0.98]"
           >
@@ -495,7 +522,7 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
       </div>
 
       <Link
-        href={`/dojos/${student.dojo_id}`}
+        href={student.dojo_id ? `/dojos/${student.dojo_id}` : "/students"}
         className="inline-flex w-full min-w-0 items-center justify-center gap-2 rounded-2xl bg-black/10 px-5 py-4 font-black text-black active:scale-[0.98]"
       >
         <ArrowLeft size={18} />
