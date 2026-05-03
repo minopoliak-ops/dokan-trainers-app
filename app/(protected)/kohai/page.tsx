@@ -249,6 +249,7 @@ export default function KohaiPage() {
     try {
       const res = await fetch("/api/admin/create-trainer", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           trainer_id: person.id,
