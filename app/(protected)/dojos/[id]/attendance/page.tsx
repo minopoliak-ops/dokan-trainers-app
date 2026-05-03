@@ -112,6 +112,7 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
   const [studentSearch, setStudentSearch] = useState("");
   const [studentFilter, setStudentFilter] = useState<StudentFilter>("visible");
   const [showSetup, setShowSetup] = useState(false);
+  const [selectedMobileTrainingId, setSelectedMobileTrainingId] = useState("");
 
   const isAdmin = !!permissions?.can_manage_trainers;
   const canWriteAttendance = !!permissions?.can_attendance || isAdmin;
@@ -178,6 +179,14 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
   const visibleStudents = filteredStudents.filter(
     (s) => !hiddenStudents.includes(s.id)
   );
+
+  const selectedMobileTraining = useMemo(() => {
+    return (
+      trainings.find((training) => training.id === selectedMobileTrainingId) ||
+      trainings[0] ||
+      null
+    );
+  }, [trainings, selectedMobileTrainingId]);
 
   const monthStats = useMemo(() => {
     const present = attendance.filter((a) => a.status === "present").length;
@@ -970,158 +979,248 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
           </p>
         ) : (
           <div className="grid gap-4 md:hidden">
-            {filteredStudents.map((student) => {
-              const hidden = hiddenStudents.includes(student.id);
+            <div className="rounded-[26px] bg-[#f7f2e8] p-3 ring-1 ring-black/5">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.14em] text-black/35">
+                    Vybraný tréning
+                  </p>
+                  <h3 className="text-xl font-black">
+                    {selectedMobileTraining
+                      ? formatDate(selectedMobileTraining.training_date)
+                      : "Bez tréningu"}
+                  </h3>
+                </div>
 
-              return (
+                <span className="rounded-2xl bg-white px-3 py-2 text-xs font-black text-black/55">
+                  {filteredStudents.length} žiakov
+                </span>
+              </div>
+
+              <div className="-mx-3 overflow-x-auto px-3 pb-2">
+                <div className="flex min-w-max gap-2">
+                  {trainings.map((training) => {
+                    const activeTraining =
+                      selectedMobileTraining?.id === training.id;
+                    const trainingAttendance = attendance.filter(
+                      (item) => item.training_id === training.id
+                    );
+                    const presentCount = trainingAttendance.filter(
+                      (item) => item.status === "present"
+                    ).length;
+                    const absentCount = trainingAttendance.filter(
+                      (item) => item.status === "absent"
+                    ).length;
+
+                    return (
+                      <button
+                        type="button"
+                        key={training.id}
+                        onClick={() => setSelectedMobileTrainingId(training.id)}
+                        className={`w-[150px] rounded-3xl border p-3 text-left active:scale-[0.98] ${
+                          activeTraining
+                            ? "border-[#d71920] bg-white shadow-sm"
+                            : `${topicColor(training.topic_id)} opacity-80`
+                        }`}
+                      >
+                        <p className="text-2xl font-black">
+                          {formatDate(training.training_date)}
+                        </p>
+                        <p className="text-xs font-bold text-black/45">
+                          {formatLongDate(training.training_date)}
+                        </p>
+                        <p className="mt-2 truncate text-xs font-black text-black/60">
+                          {training.training_topics?.name || "Bez témy"}
+                        </p>
+                        <div className="mt-2 flex gap-1 text-[11px] font-black">
+                          <span className="rounded-full bg-green-100 px-2 py-1 text-green-800">
+                            ✓ {presentCount}
+                          </span>
+                          <span className="rounded-full bg-red-100 px-2 py-1 text-red-800">
+                            ✕ {absentCount}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {selectedMobileTraining && (
                 <div
-                  key={student.id}
-                  className={`overflow-hidden rounded-[26px] border border-black/10 bg-[#f7f2e8] ${
-                    hidden ? "opacity-45" : ""
-                  }`}
+                  className={`mt-2 rounded-3xl border p-3 ${topicColor(
+                    selectedMobileTraining.topic_id
+                  )}`}
                 >
-                  <div className="flex items-start justify-between gap-3 bg-white p-4">
+                  <div className="mb-3 flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="break-words text-xl font-black leading-tight">
-                        {student.first_name} {student.last_name}
+                      <p className="text-sm font-black text-black/45">
+                        Téma tréningu
                       </p>
-                      <p className="mt-1 text-sm font-bold text-black/55">
-                        {student.technical_grade || "Bez stupňa"}
+                      <p className="truncate text-lg font-black">
+                        {selectedMobileTraining.training_topics?.name || "Bez témy"}
                       </p>
                     </div>
 
-                    {canWriteAttendance && (
+                    <span className="shrink-0 rounded-2xl bg-white px-3 py-2 text-xs font-black text-black/55">
+                      {formatLongDate(selectedMobileTraining.training_date)}
+                    </span>
+                  </div>
+
+                  {canCreateTrainings && (
+                    <select
+                      value={selectedMobileTraining.topic_id || ""}
+                      onChange={(e) =>
+                        updateTrainingTopic(
+                          selectedMobileTraining.id,
+                          e.target.value
+                        )
+                      }
+                      className="mb-3 h-[46px] w-full rounded-2xl border border-black/10 bg-white px-3 text-sm font-bold"
+                    >
+                      <option value="">Bez témy</option>
+                      {topics.map((topic) => (
+                        <option key={topic.id} value={topic.id}>
+                          {topic.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+
+                  {canWriteAttendance && (
+                    <div className="grid grid-cols-3 gap-2">
                       <button
                         type="button"
-                        onClick={() =>
-                          setHiddenStudents((prev) =>
-                            prev.includes(student.id)
-                              ? prev.filter((id) => id !== student.id)
-                              : [...prev, student.id]
-                          )
-                        }
-                        className={`shrink-0 rounded-2xl px-4 py-2 text-sm font-black ${
-                          hidden
-                            ? "bg-green-100 text-green-800"
-                            : "bg-red-50 text-red-700"
-                        }`}
+                        onClick={() => markAll(selectedMobileTraining.id, "present")}
+                        className="inline-flex h-12 items-center justify-center gap-1 rounded-2xl bg-green-600 px-2 text-sm font-black text-white active:scale-[0.98]"
                       >
-                        {hidden ? "Vrátiť" : "Skryť"}
+                        <Check size={18} /> Všetci
                       </button>
-                    )}
-                  </div>
 
-                  <div className="grid gap-3 p-3">
-                    {trainings.map((training) => {
-                      const status = getAttendance(training.id, student.id);
+                      <button
+                        type="button"
+                        onClick={() => markAll(selectedMobileTraining.id, "absent")}
+                        className="inline-flex h-12 items-center justify-center gap-1 rounded-2xl bg-red-600 px-2 text-sm font-black text-white active:scale-[0.98]"
+                      >
+                        <X size={18} /> Všetci
+                      </button>
 
-                      return (
-                        <div
-                          key={training.id}
-                          className={`rounded-3xl border p-3 ${topicColor(
-                            training.topic_id
-                          )}`}
-                        >
-                          <div className="mb-3 flex items-start justify-between gap-3">
-                            <div>
-                              <p className="text-2xl font-black">
-                                {formatDate(training.training_date)}
-                              </p>
-                              <p className="text-xs font-bold text-black/45">
-                                {formatLongDate(training.training_date)}
-                              </p>
-                            </div>
+                      <button
+                        type="button"
+                        onClick={() => clearTraining(selectedMobileTraining.id)}
+                        className="inline-flex h-12 items-center justify-center gap-1 rounded-2xl bg-[#111] px-2 text-sm font-black text-white active:scale-[0.98]"
+                      >
+                        <RefreshCcw size={17} /> Reset
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
 
-                            <p className="max-w-[150px] truncate rounded-2xl bg-white px-3 py-2 text-xs font-black text-black/60">
-                              {training.training_topics?.name || "Bez témy"}
-                            </p>
-                          </div>
+            {selectedMobileTraining && (
+              <div className="grid gap-2">
+                {filteredStudents.map((student) => {
+                  const hidden = hiddenStudents.includes(student.id);
+                  const status = getAttendance(selectedMobileTraining.id, student.id);
 
-                          {canCreateTrainings && (
-                            <select
-                              value={training.topic_id || ""}
-                              onChange={(e) =>
-                                updateTrainingTopic(training.id, e.target.value)
-                              }
-                              className="mb-3 h-[44px] w-full rounded-2xl border border-black/10 bg-white px-3 text-sm font-bold"
-                            >
-                              <option value="">Bez témy</option>
-                              {topics.map((topic) => (
-                                <option key={topic.id} value={topic.id}>
-                                  {topic.name}
-                                </option>
-                              ))}
-                            </select>
-                          )}
+                  return (
+                    <div
+                      key={student.id}
+                      className={`rounded-[24px] border border-black/10 bg-white p-3 shadow-sm ${
+                        hidden ? "opacity-45" : ""
+                      }`}
+                    >
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-lg font-black leading-tight">
+                            {student.first_name} {student.last_name}
+                          </p>
+                          <p className="truncate text-sm font-bold text-black/50">
+                            {student.technical_grade || "Bez stupňa"}
+                          </p>
+                        </div>
 
-                          <div className="grid grid-cols-3 gap-2">
-                            <button
-                              type="button"
-                              disabled={!canWriteAttendance || hidden}
-                              onClick={() =>
-                                setAttendanceStatus(
-                                  training.id,
-                                  student.id,
-                                  "present"
-                                )
-                              }
-                              className={`flex h-12 items-center justify-center rounded-2xl text-white disabled:opacity-40 ${
-                                status === "present"
-                                  ? "bg-green-600"
-                                  : "bg-black/15"
-                              }`}
-                            >
-                              <Check size={20} />
-                            </button>
-
-                            <button
-                              type="button"
-                              disabled={!canWriteAttendance || hidden}
-                              onClick={() =>
-                                setAttendanceStatus(
-                                  training.id,
-                                  student.id,
-                                  "absent"
-                                )
-                              }
-                              className={`flex h-12 items-center justify-center rounded-2xl text-white disabled:opacity-40 ${
-                                status === "absent" ? "bg-red-600" : "bg-black/15"
-                              }`}
-                            >
-                              <X size={20} />
-                            </button>
-
-                            <button
-                              type="button"
-                              disabled={!canWriteAttendance || hidden}
-                              onClick={() =>
-                                setAttendanceStatus(training.id, student.id, null)
-                              }
-                              className={`flex h-12 items-center justify-center rounded-2xl disabled:opacity-40 ${
-                                status === null
-                                  ? "bg-[#111] text-white"
-                                  : "bg-black/10 text-black"
-                              }`}
-                            >
-                              <XCircle size={20} />
-                            </button>
-                          </div>
-
+                        {canWriteAttendance && (
                           <button
                             type="button"
-                            disabled={!canWriteAttendance || hidden}
-                            onClick={() => cycleAttendance(training.id, student.id)}
-                            className="mt-2 w-full rounded-2xl bg-white/80 py-2 text-xs font-black text-black/45 disabled:opacity-40"
+                            onClick={() =>
+                              setHiddenStudents((prev) =>
+                                prev.includes(student.id)
+                                  ? prev.filter((id) => id !== student.id)
+                                  : [...prev, student.id]
+                              )
+                            }
+                            className={`shrink-0 rounded-2xl px-3 py-2 text-xs font-black ${
+                              hidden
+                                ? "bg-green-100 text-green-800"
+                                : "bg-red-50 text-red-700"
+                            }`}
                           >
-                            cyklus: prítomný → neprítomný → prázdne
+                            {hidden ? "Vrátiť" : "Skryť"}
                           </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <button
+                          type="button"
+                          disabled={!canWriteAttendance || hidden}
+                          onClick={() =>
+                            setAttendanceStatus(
+                              selectedMobileTraining.id,
+                              student.id,
+                              "present"
+                            )
+                          }
+                          className={`flex h-12 items-center justify-center rounded-2xl text-white disabled:opacity-40 ${
+                            status === "present" ? "bg-green-600" : "bg-black/15"
+                          }`}
+                        >
+                          <Check size={21} />
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={!canWriteAttendance || hidden}
+                          onClick={() =>
+                            setAttendanceStatus(
+                              selectedMobileTraining.id,
+                              student.id,
+                              "absent"
+                            )
+                          }
+                          className={`flex h-12 items-center justify-center rounded-2xl text-white disabled:opacity-40 ${
+                            status === "absent" ? "bg-red-600" : "bg-black/15"
+                          }`}
+                        >
+                          <X size={21} />
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={!canWriteAttendance || hidden}
+                          onClick={() =>
+                            setAttendanceStatus(
+                              selectedMobileTraining.id,
+                              student.id,
+                              null
+                            )
+                          }
+                          className={`flex h-12 items-center justify-center rounded-2xl disabled:opacity-40 ${
+                            status === null
+                              ? "bg-[#111] text-white"
+                              : "bg-black/10 text-black"
+                          }`}
+                        >
+                          <XCircle size={21} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
