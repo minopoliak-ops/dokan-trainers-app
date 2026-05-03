@@ -1,7 +1,7 @@
 "use client";
 
+import { gradeOptions } from "@/lib/grades";
 import { createClient } from "@/lib/supabase/browser";
-import { usePermissions } from "@/lib/usePermissions";
 import {
   ArrowLeft,
   CalendarDays,
@@ -12,161 +12,114 @@ import {
   Phone,
   Save,
   ShieldAlert,
-  Trash2,
   UserRound,
   Users,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { FormEvent, useEffect, useState } from "react";
 
-export default function StudentProfilePage({ params }: { params: { id: string } }) {
-  const { permissions } = usePermissions();
+export default function NewStudentPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
-  const [student, setStudent] = useState<any>(null);
   const [dojos, setDojos] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [isAdult, setIsAdult] = useState(false);
   const [saving, setSaving] = useState(false);
-
-  const canEdit = permissions?.can_add_students || permissions?.can_manage_trainers;
-  const canDelete = permissions?.can_delete_students || permissions?.can_manage_trainers;
-
-  async function loadData() {
-    setLoading(true);
-
-    const supabase = createClient();
-
-    const studentRes = await supabase
-      .from("students")
-      .select("*, dojos(name, address)")
-      .eq("id", params.id)
-      .single();
-
-    const dojosRes = await supabase.from("dojos").select("*").order("name");
-
-    if (studentRes.error) {
-      console.error(studentRes.error.message);
-      setStudent(null);
-      setDojos(dojosRes.data || []);
-      setLoading(false);
-      return;
-    }
-
-    setStudent(studentRes.data);
-    setDojos(dojosRes.data || []);
-    setLoading(false);
-  }
+  const [selectedDojoId, setSelectedDojoId] = useState("");
 
   useEffect(() => {
-    loadData();
-  }, [params.id]);
+    const dojoFromUrl = searchParams.get("dojo");
+    if (dojoFromUrl) setSelectedDojoId(dojoFromUrl);
 
-  function updateField(field: string, value: any) {
-    setStudent((current: any) => ({
-      ...current,
-      [field]: value,
-    }));
-  }
+    const supabase = createClient();
 
-  const isAdult = student?.is_adult === true;
+    supabase
+      .from("dojos")
+      .select("*")
+      .order("name")
+      .then(({ data }) => setDojos(data || []));
+  }, [searchParams]);
 
-  const contactPhone = useMemo(() => {
-    if (!student) return "";
-    return isAdult
-      ? student.phone || student.parent_phone || ""
-      : student.parent_phone || student.phone || "";
-  }, [student, isAdult]);
+  async function save(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (saving) return;
 
-  const contactEmail = useMemo(() => {
-    if (!student) return "";
-    return isAdult
-      ? student.email || student.parent_email || ""
-      : student.parent_email || student.email || "";
-  }, [student, isAdult]);
+    const form = new FormData(e.currentTarget);
+    const supabase = createClient();
 
-  async function saveStudent() {
-    if (!canEdit) return alert("Nemáš oprávnenie upravovať žiaka.");
-    if (!student) return;
+    const dojoId = String(form.get("dojo_id") || "");
+    const technicalGrade = String(form.get("technical_grade") || "");
+    const gradeSystem = String(form.get("grade_system") || "");
+    const gradingDate = String(form.get("last_grading_date") || "");
+
+    if (!dojoId) return alert("Vyber dojo.");
 
     setSaving(true);
-    const supabase = createClient();
 
-    const { dojos, ...payload } = student;
+    const payload = {
+      dojo_id: dojoId,
+      first_name: String(form.get("first_name") || "").trim(),
+      last_name: String(form.get("last_name") || "").trim(),
+      birth_year: form.get("birth_year") ? Number(form.get("birth_year")) : null,
+      is_adult: isAdult,
+      parent_name: isAdult
+        ? null
+        : String(form.get("parent_name") || "").trim() || null,
+      parent_phone: isAdult
+        ? null
+        : String(form.get("parent_phone") || "").trim() || null,
+      parent_email: isAdult
+        ? null
+        : String(form.get("parent_email") || "").trim() || null,
+      phone: isAdult ? String(form.get("phone") || "").trim() || null : null,
+      email: isAdult ? String(form.get("email") || "").trim() || null : null,
+      health_info: String(form.get("health_info") || "").trim() || null,
+      medication_info: String(form.get("medication_info") || "").trim() || null,
+      notes: String(form.get("notes") || "").trim() || null,
+      grade_system: gradeSystem || null,
+      technical_grade: technicalGrade || null,
+      last_grading_date: gradingDate || null,
+      active: true,
+    };
 
-    const { error } = await supabase
+    const { data: student, error } = await supabase
       .from("students")
-      .update({
-        first_name: payload.first_name || null,
-        last_name: payload.last_name || null,
-        birth_year: payload.birth_year ? Number(payload.birth_year) : null,
-        is_adult: !!payload.is_adult,
-        parent_name: payload.is_adult ? null : payload.parent_name || null,
-        parent_phone: payload.is_adult ? null : payload.parent_phone || null,
-        parent_email: payload.is_adult ? null : payload.parent_email || null,
-        phone: payload.is_adult ? payload.phone || payload.parent_phone || null : null,
-        email: payload.is_adult ? payload.email || payload.parent_email || null : null,
-        health_info: payload.health_info || null,
-        medication_info: payload.medication_info || null,
-        technical_grade: payload.technical_grade || null,
-        last_grading_date: payload.last_grading_date || null,
-        notes: payload.notes || null,
-        dojo_id: payload.dojo_id || null,
-      })
-      .eq("id", params.id);
+      .insert(payload)
+      .select("id")
+      .single();
+
+    if (error) {
+      setSaving(false);
+      return alert(error.message);
+    }
+
+    if (technicalGrade) {
+      await supabase.from("student_grade_history").insert({
+        student_id: student.id,
+        grade_system: gradeSystem || null,
+        technical_grade: technicalGrade,
+        grading_date: gradingDate || null,
+      });
+    }
 
     setSaving(false);
-
-    if (error) return alert(error.message);
-
-    alert("Cvičiaci uložený.");
-    loadData();
-  }
-
-  async function deleteStudent() {
-    if (!canDelete) return alert("Nemáš oprávnenie vymazať cvičiaceho.");
-    if (!confirm("Naozaj deaktivovať cvičiaceho?")) return;
-
-    const supabase = createClient();
-
-    const { error } = await supabase
-      .from("students")
-      .update({ active: false })
-      .eq("id", params.id);
-
-    if (error) return alert(error.message);
-
-    alert("Cvičiaci bol deaktivovaný.");
-    window.location.href = "/students";
+    router.push(`/students/${student.id}`);
   }
 
   const inputClass =
-    "box-border h-[54px] w-full min-w-0 max-w-full rounded-2xl border border-black/10 bg-white px-4 text-[16px] font-bold outline-none ring-0 transition focus:border-[#d71920] focus:bg-white disabled:opacity-60";
+    "box-border h-[54px] w-full min-w-0 max-w-full rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 text-base font-bold outline-none focus:border-[#d71920] focus:bg-white";
 
-  const inputCreamClass =
-    "box-border h-[54px] w-full min-w-0 max-w-full rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 text-[16px] font-bold outline-none ring-0 transition focus:border-[#d71920] focus:bg-white disabled:opacity-60";
+  const dateInputClass =
+    "box-border h-[54px] w-full min-w-0 max-w-full appearance-none rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 text-left text-base font-bold outline-none focus:border-[#d71920] focus:bg-white";
+
+  const textareaClass =
+    "box-border min-h-[110px] w-full min-w-0 max-w-full rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 py-3 text-base font-semibold outline-none focus:border-[#d71920] focus:bg-white";
 
   const labelClass = "mb-2 block text-sm font-black text-black/55";
 
-  const textAreaClass =
-    "box-border min-h-[120px] w-full min-w-0 max-w-full resize-none rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 py-3 text-[16px] font-semibold outline-none ring-0 transition focus:border-[#d71920] focus:bg-white disabled:opacity-60";
-
-  if (loading) {
-    return (
-      <div className="min-h-screen overflow-x-hidden bg-[#f7f2e8] px-4 py-6 pb-40 sm:px-5">
-        <div className="rounded-3xl bg-white p-6 shadow-sm">Načítavam profil...</div>
-      </div>
-    );
-  }
-
-  if (!student) {
-    return (
-      <div className="min-h-screen overflow-x-hidden bg-[#f7f2e8] px-4 py-6 pb-40 sm:px-5">
-        <div className="rounded-3xl bg-white p-6 shadow-sm">Cvičiaci sa nenašiel.</div>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen space-y-6 overflow-x-hidden bg-[#f7f2e8] px-4 py-6 pb-40 sm:px-5">
+    <div className="min-h-screen overflow-x-hidden bg-[#f7f2e8] px-4 py-6 pb-40 sm:px-5 space-y-6">
       <div className="overflow-hidden rounded-[32px] bg-[#111] text-white shadow-[0_18px_45px_rgba(0,0,0,0.25)]">
         <div className="min-w-0 p-6">
           <div
@@ -178,96 +131,83 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
           </div>
 
           <p className="text-sm font-bold uppercase tracking-[0.18em] text-white/45">
-            Profil cvičiaceho
+            Nový cvičiaci
           </p>
 
           <h1 className="mt-2 break-words text-4xl font-black tracking-tight">
-            {student.first_name} {student.last_name}
+            Pridať žiaka
           </h1>
 
-          <p className="mt-2 max-w-2xl break-words text-white/65">
-            {student.dojos?.name || "Bez dojo"} · {student.technical_grade || "Bez technického stupňa"}
+          <p className="mt-3 max-w-2xl text-white/65">
+            Vytvor profil cvičiaceho, priraď dojo, kontakt, technický stupeň a
+            poznámky pre trénerov.
           </p>
 
-          <div className="mt-6 grid min-w-0 gap-3 md:grid-cols-4">
+          <div className="mt-6 grid min-w-0 gap-3 md:grid-cols-3">
             <div className="min-w-0 rounded-2xl bg-white/10 p-4">
               <p className="text-sm text-white/50">Typ</p>
-              <p className="truncate text-2xl font-black">{isAdult ? "Dospelý" : "Dieťa"}</p>
+              <p className="truncate text-2xl font-black">
+                {isAdult ? "Dospelý" : "Dieťa"}
+              </p>
             </div>
 
             <div className="min-w-0 rounded-2xl bg-white/10 p-4">
-              <p className="text-sm text-white/50">Rok narodenia</p>
-              <p className="truncate text-2xl font-black">{student.birth_year || "—"}</p>
+              <p className="text-sm text-white/50">Dojo</p>
+              <p className="truncate text-2xl font-black">
+                {dojos.find((d) => d.id === selectedDojoId)?.name || "Nevybrané"}
+              </p>
             </div>
 
             <div className="min-w-0 rounded-2xl bg-white/10 p-4">
-              <p className="text-sm text-white/50">Stupeň</p>
-              <p className="truncate text-2xl font-black">{student.technical_grade || "—"}</p>
-            </div>
-
-            <div className="min-w-0 rounded-2xl bg-white/10 p-4">
-              <p className="text-sm text-white/50">Skúšanie</p>
-              <p className="truncate text-2xl font-black">{student.last_grading_date || "—"}</p>
+              <p className="text-sm text-white/50">Stav</p>
+              <p className="truncate text-2xl font-black">
+                {saving ? "Ukladám..." : "Nový profil"}
+              </p>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="grid min-w-0 gap-4 md:grid-cols-3">
-        <div className="min-w-0 overflow-hidden rounded-[28px] bg-white p-5 shadow-sm ring-1 ring-black/10">
-          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#d71920] text-white">
-            <MapPin />
-          </div>
-          <h2 className="text-xl font-black">Dojo</h2>
-          <p className="mt-1 break-words text-sm font-bold text-black/55">
-            {student.dojos?.name || "Bez dojo"}
-          </p>
-          <p className="mt-1 break-words text-sm text-black/45">
-            {student.dojos?.address || "Bez adresy"}
-          </p>
-        </div>
-
-        <a
-          href={contactPhone ? `tel:${contactPhone}` : undefined}
-          className="min-w-0 overflow-hidden rounded-[28px] bg-white p-5 shadow-sm ring-1 ring-black/10 active:scale-[0.98]"
-        >
-          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#111] text-white">
-            <Phone />
-          </div>
-          <h2 className="text-xl font-black">Telefón</h2>
-          <p className="mt-1 break-words text-sm font-bold text-black/55">
-            {contactPhone || "Nie je vyplnený"}
-          </p>
-        </a>
-
-        <a
-          href={contactEmail ? `mailto:${contactEmail}` : undefined}
-          className="min-w-0 overflow-hidden rounded-[28px] bg-white p-5 shadow-sm ring-1 ring-black/10 active:scale-[0.98]"
-        >
-          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#f7f2e8] text-[#d71920]">
-            <Mail />
-          </div>
-          <h2 className="text-xl font-black">Email</h2>
-          <p className="mt-1 break-all text-sm font-bold text-black/55">
-            {contactEmail || "Nie je vyplnený"}
-          </p>
-        </a>
-      </div>
-
-      <div className="min-w-0 space-y-5 overflow-hidden rounded-[30px] bg-white p-4 shadow-sm ring-1 ring-black/10 sm:p-5">
+      <form
+        onSubmit={save}
+        className="grid min-w-0 gap-6 overflow-hidden rounded-[30px] bg-white p-4 shadow-sm ring-1 ring-black/10 sm:p-5"
+      >
         <div className="min-w-0">
           <p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">
-            Úprava profilu
+            Základné údaje
           </p>
-          <h2 className="break-words text-2xl font-black">Osobné údaje</h2>
+          <h2 className="break-words text-2xl font-black">Cvičiaci</h2>
+        </div>
+
+        <div className="min-w-0">
+          <label className={labelClass}>
+            <span className="inline-flex items-center gap-2">
+              <MapPin size={17} />
+              Dojo
+            </span>
+          </label>
+
+          <select
+            name="dojo_id"
+            required
+            value={selectedDojoId}
+            onChange={(e) => setSelectedDojoId(e.target.value)}
+            className={inputClass}
+          >
+            <option value="">Vyber dojo</option>
+            {dojos.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="grid min-w-0 grid-cols-2 gap-2 rounded-3xl bg-[#f7f2e8] p-2">
           <button
             type="button"
-            disabled={!canEdit}
-            onClick={() => updateField("is_adult", false)}
-            className={`min-w-0 rounded-2xl px-3 py-4 font-black active:scale-[0.98] disabled:opacity-60 ${
+            onClick={() => setIsAdult(false)}
+            className={`min-w-0 rounded-2xl px-3 py-4 font-black active:scale-[0.98] ${
               !isAdult ? "bg-blue-600 text-white" : "bg-white text-black"
             }`}
           >
@@ -276,9 +216,8 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
 
           <button
             type="button"
-            disabled={!canEdit}
-            onClick={() => updateField("is_adult", true)}
-            className={`min-w-0 rounded-2xl px-3 py-4 font-black active:scale-[0.98] disabled:opacity-60 ${
+            onClick={() => setIsAdult(true)}
+            className={`min-w-0 rounded-2xl px-3 py-4 font-black active:scale-[0.98] ${
               isAdult ? "bg-green-600 text-white" : "bg-white text-black"
             }`}
           >
@@ -286,17 +225,12 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
           </button>
         </div>
 
-        <div className="grid min-w-0 gap-4 md:grid-cols-2">
+        <div className="grid min-w-0 gap-4 sm:grid-cols-2">
           <div className="min-w-0">
             <label className={labelClass}>
               {isAdult ? "Meno dospelého cvičiaceho" : "Meno dieťaťa"}
             </label>
-            <input
-              className={inputCreamClass}
-              value={student.first_name || ""}
-              disabled={!canEdit}
-              onChange={(e) => updateField("first_name", e.target.value)}
-            />
+            <input name="first_name" required placeholder="Meno" className={inputClass} />
           </div>
 
           <div className="min-w-0">
@@ -304,230 +238,209 @@ export default function StudentProfilePage({ params }: { params: { id: string } 
               {isAdult ? "Priezvisko dospelého cvičiaceho" : "Priezvisko dieťaťa"}
             </label>
             <input
-              className={inputCreamClass}
-              value={student.last_name || ""}
-              disabled={!canEdit}
-              onChange={(e) => updateField("last_name", e.target.value)}
+              name="last_name"
+              required
+              placeholder="Priezvisko"
+              className={inputClass}
             />
           </div>
-
-          <div className="min-w-0">
-            <label className={labelClass}>Rok narodenia</label>
-            <input
-              className={inputCreamClass}
-              type="number"
-              value={student.birth_year || ""}
-              disabled={!canEdit}
-              onChange={(e) => updateField("birth_year", e.target.value)}
-            />
-          </div>
-
-          <div className="min-w-0">
-            <label className={labelClass}>Dojo</label>
-            <select
-              className={inputCreamClass}
-              value={student.dojo_id || ""}
-              disabled={!canEdit}
-              onChange={(e) => updateField("dojo_id", e.target.value)}
-            >
-              <option value="">Bez dojo</option>
-              {dojos.map((dojo) => (
-                <option key={dojo.id} value={dojo.id}>
-                  {dojo.name}
-                </option>
-              ))}
-            </select>
-          </div>
         </div>
-      </div>
 
-      <div className="min-w-0 overflow-hidden rounded-[30px] bg-white p-4 shadow-sm ring-1 ring-black/10 sm:p-5">
-        <div className="rounded-[26px] bg-[#f7f2e8] p-4">
-          <div className="min-w-0">
-            <p className="text-sm font-black uppercase tracking-[0.18em] text-black/35">
-              Technický stupeň
-            </p>
-            <h2 className="mt-1 break-words text-2xl font-black">Páskovanie / skúšky</h2>
-          </div>
-
-          <div className="mt-5 grid min-w-0 gap-4 md:grid-cols-2">
-            <div className="min-w-0">
-              <label className={labelClass}>
-                <span className="inline-flex min-w-0 items-center gap-2">
-                  <GraduationCap size={17} className="shrink-0" />
-                  <span className="break-words">Technický stupeň</span>
-                </span>
-              </label>
-
-              <div className="relative min-w-0">
-                <GraduationCap
-                  size={18}
-                  className="pointer-events-none absolute left-4 top-1/2 z-10 -translate-y-1/2 text-black/35"
-                />
-                <input
-                  className={`${inputClass} pl-11 pr-4`}
-                  value={student.technical_grade || ""}
-                  disabled={!canEdit}
-                  placeholder="Technický stupeň"
-                  onChange={(e) => updateField("technical_grade", e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="min-w-0">
-              <label className={labelClass}>
-                <span className="inline-flex min-w-0 items-center gap-2">
-                  <CalendarDays size={17} className="shrink-0" />
-                  <span className="break-words">Dátum skúšok</span>
-                </span>
-              </label>
-
-              <div className="relative min-w-0">
-                <CalendarDays
-                  size={18}
-                  className="pointer-events-none absolute left-4 top-1/2 z-10 -translate-y-1/2 text-black/35"
-                />
-                <input
-                  type="date"
-                  className={`${inputClass} pl-11 pr-4`}
-                  value={student.last_grading_date || ""}
-                  disabled={!canEdit}
-                  onChange={(e) => updateField("last_grading_date", e.target.value)}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="min-w-0 space-y-5 overflow-hidden rounded-[30px] bg-white p-4 shadow-sm ring-1 ring-black/10 sm:p-5">
         <div className="min-w-0">
-          <p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">Kontakt</p>
-          <h2 className="break-words text-2xl font-black">
-            {isAdult ? "Kontakt cvičiaceho" : "Kontakt rodiča"}
-          </h2>
+          <label className={labelClass}>Rok narodenia</label>
+          <input
+            name="birth_year"
+            type="number"
+            placeholder="Rok narodenia"
+            className={inputClass}
+          />
         </div>
 
-        <div className="grid min-w-0 gap-4 md:grid-cols-2">
-          {!isAdult && (
-            <div className="min-w-0 md:col-span-2">
-              <label className={labelClass}>Meno a priezvisko rodiča</label>
-              <input
-                className={inputCreamClass}
-                value={student.parent_name || ""}
-                disabled={!canEdit}
-                onChange={(e) => updateField("parent_name", e.target.value)}
-              />
+        <div className="min-w-0 overflow-hidden rounded-[26px] bg-[#f7f2e8] p-4">
+          <div className="mb-4 min-w-0">
+            <p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">
+              Kontakt
+            </p>
+            <h3 className="break-words text-xl font-black">
+              {isAdult ? "Kontakt cvičiaceho" : "Kontakt rodiča"}
+            </h3>
+          </div>
+
+          {isAdult ? (
+            <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+              <div className="min-w-0">
+                <label className={labelClass}>
+                  <span className="inline-flex items-center gap-2">
+                    <Phone size={17} />
+                    Telefón
+                  </span>
+                </label>
+                <input name="phone" placeholder="Telefón" className={inputClass} />
+              </div>
+
+              <div className="min-w-0">
+                <label className={labelClass}>
+                  <span className="inline-flex items-center gap-2">
+                    <Mail size={17} />
+                    Email
+                  </span>
+                </label>
+                <input name="email" type="email" placeholder="Email" className={inputClass} />
+              </div>
+            </div>
+          ) : (
+            <div className="grid min-w-0 gap-4 sm:grid-cols-3">
+              <div className="min-w-0">
+                <label className={labelClass}>Meno rodiča</label>
+                <input name="parent_name" placeholder="Meno rodiča" className={inputClass} />
+              </div>
+
+              <div className="min-w-0">
+                <label className={labelClass}>
+                  <span className="inline-flex items-center gap-2">
+                    <Phone size={17} />
+                    Telefón rodiča
+                  </span>
+                </label>
+                <input
+                  name="parent_phone"
+                  placeholder="Telefón rodiča"
+                  className={inputClass}
+                />
+              </div>
+
+              <div className="min-w-0">
+                <label className={labelClass}>
+                  <span className="inline-flex items-center gap-2">
+                    <Mail size={17} />
+                    Email rodiča
+                  </span>
+                </label>
+                <input
+                  name="parent_email"
+                  type="email"
+                  placeholder="Email rodiča"
+                  className={inputClass}
+                />
+              </div>
             </div>
           )}
+        </div>
+
+        <div className="min-w-0 overflow-hidden rounded-[26px] bg-[#f7f2e8] p-4">
+          <div className="mb-4 min-w-0">
+            <p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">
+              Technický stupeň
+            </p>
+            <h3 className="break-words text-xl font-black">Páskovanie / skúšky</h3>
+          </div>
+
+          <div className="grid min-w-0 gap-4 sm:grid-cols-3">
+            <div className="min-w-0">
+              <label className={labelClass}>Typ stupňa</label>
+              <select name="grade_system" className={inputClass}>
+                <option value="">Typ stupňa</option>
+                <option value="child">Detské pásiky</option>
+                <option value="kyu_dan">Kyu / Dan</option>
+              </select>
+            </div>
+
+            <div className="min-w-0">
+              <label className={labelClass}>
+                <span className="inline-flex items-center gap-2">
+                  <GraduationCap size={17} />
+                  Technický stupeň
+                </span>
+              </label>
+              <select name="technical_grade" className={inputClass}>
+                <option value="">Technický stupeň</option>
+                {gradeOptions.map((g) => (
+                  <option key={g} value={g}>
+                    {g}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="min-w-0 overflow-hidden">
+              <label className={labelClass}>
+                <span className="inline-flex items-center gap-2">
+                  <CalendarDays size={17} />
+                  Dátum skúšok
+                </span>
+              </label>
+              <input
+                name="last_grading_date"
+                type="date"
+                className={dateInputClass}
+                style={{ WebkitAppearance: "none" }}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="min-w-0 space-y-4 overflow-hidden rounded-[26px] bg-[#f7f2e8] p-4">
+          <div className="min-w-0">
+            <p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">
+              Bezpečnosť a poznámky
+            </p>
+            <h3 className="break-words text-xl font-black">Zdravie, lieky, poznámky</h3>
+          </div>
 
           <div className="min-w-0">
-            <label className={labelClass}>{isAdult ? "Telefón cvičiaceho" : "Telefón rodiča"}</label>
-            <input
-              className={inputCreamClass}
-              value={isAdult ? student.phone || student.parent_phone || "" : student.parent_phone || ""}
-              disabled={!canEdit}
-              onChange={(e) => updateField(isAdult ? "phone" : "parent_phone", e.target.value)}
+            <label className={labelClass}>
+              <span className="inline-flex items-center gap-2">
+                <HeartPulse size={17} />
+                Zdravotný stav
+              </span>
+            </label>
+            <textarea
+              name="health_info"
+              rows={3}
+              placeholder="Zdravotný stav"
+              className={textareaClass}
             />
           </div>
 
           <div className="min-w-0">
-            <label className={labelClass}>{isAdult ? "Email cvičiaceho" : "Email rodiča"}</label>
-            <input
-              className={inputCreamClass}
-              type="email"
-              value={isAdult ? student.email || student.parent_email || "" : student.parent_email || ""}
-              disabled={!canEdit}
-              onChange={(e) => updateField(isAdult ? "email" : "parent_email", e.target.value)}
+            <label className={labelClass}>
+              <span className="inline-flex items-center gap-2">
+                <ShieldAlert size={17} />
+                Lieky
+              </span>
+            </label>
+            <textarea
+              name="medication_info"
+              rows={3}
+              placeholder="Lieky"
+              className={textareaClass}
             />
           </div>
-        </div>
-      </div>
 
-      <div className="min-w-0 space-y-5 overflow-hidden rounded-[30px] bg-white p-4 shadow-sm ring-1 ring-black/10 sm:p-5">
-        <div className="min-w-0">
-          <p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">
-            Bezpečnosť a poznámky
-          </p>
-          <h2 className="break-words text-2xl font-black">Zdravie, lieky, poznámky</h2>
+          <div className="min-w-0">
+            <label className={labelClass}>Poznámka</label>
+            <textarea name="notes" rows={3} placeholder="Poznámka" className={textareaClass} />
+          </div>
         </div>
 
-        <div className="min-w-0">
-          <label className={labelClass}>
-            <span className="inline-flex items-center gap-2">
-              <HeartPulse size={17} />
-              Zdravotné poznámky
-            </span>
-          </label>
-          <textarea
-            className={textAreaClass}
-            placeholder="Zdravotné poznámky"
-            value={student.health_info || ""}
-            disabled={!canEdit}
-            onChange={(e) => updateField("health_info", e.target.value)}
-          />
-        </div>
-
-        <div className="min-w-0">
-          <label className={labelClass}>
-            <span className="inline-flex items-center gap-2">
-              <ShieldAlert size={17} />
-              Lieky
-            </span>
-          </label>
-          <textarea
-            className={textAreaClass}
-            placeholder="Lieky"
-            value={student.medication_info || ""}
-            disabled={!canEdit}
-            onChange={(e) => updateField("medication_info", e.target.value)}
-          />
-        </div>
-
-        <div className="min-w-0">
-          <label className={labelClass}>Poznámky</label>
-          <textarea
-            className={textAreaClass}
-            placeholder="Poznámky"
-            value={student.notes || ""}
-            disabled={!canEdit}
-            onChange={(e) => updateField("notes", e.target.value)}
-          />
-        </div>
-      </div>
-
-      <div className="grid min-w-0 gap-3 md:grid-cols-2">
-        {canEdit && (
+        <div className="grid min-w-0 gap-3 md:grid-cols-2">
           <button
-            type="button"
-            onClick={saveStudent}
             disabled={saving}
             className="inline-flex h-[58px] min-w-0 items-center justify-center gap-2 rounded-2xl bg-[#d71920] px-4 font-black text-white shadow-[0_8px_18px_rgba(215,25,32,0.25)] active:scale-[0.98] disabled:opacity-60"
           >
             <Save size={20} />
-            {saving ? "Ukladám..." : "Uložiť zmeny"}
+            {saving ? "Ukladám..." : "Uložiť žiaka"}
           </button>
-        )}
 
-        {canDelete && (
-          <button
-            type="button"
-            onClick={deleteStudent}
-            className="inline-flex h-[58px] min-w-0 items-center justify-center gap-2 rounded-2xl bg-[#111] px-4 font-black text-white active:scale-[0.98]"
+          <Link
+            href="/students"
+            className="inline-flex h-[58px] min-w-0 items-center justify-center gap-2 rounded-2xl bg-black/10 px-4 font-black text-black active:scale-[0.98]"
           >
-            <Trash2 size={20} />
-            Deaktivovať cvičiaceho
-          </button>
-        )}
-      </div>
-
-      <Link
-        href={student.dojo_id ? `/dojos/${student.dojo_id}` : "/students"}
-        className="inline-flex w-full min-w-0 items-center justify-center gap-2 rounded-2xl bg-black/10 px-5 py-4 font-black text-black active:scale-[0.98]"
-      >
-        <ArrowLeft size={18} />
-        Späť do dojo
-      </Link>
+            <ArrowLeft size={18} />
+            Späť na žiakov
+          </Link>
+        </div>
+      </form>
     </div>
   );
 }
