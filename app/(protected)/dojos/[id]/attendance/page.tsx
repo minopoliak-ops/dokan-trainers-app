@@ -188,6 +188,11 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
     );
   }, [trainings, selectedMobileTrainingId]);
 
+  const selectedMobileTrainingIndex = useMemo(() => {
+    if (!selectedMobileTraining) return -1;
+    return trainings.findIndex((training) => training.id === selectedMobileTraining.id);
+  }, [trainings, selectedMobileTraining]);
+
   const monthStats = useMemo(() => {
     const present = attendance.filter((a) => a.status === "present").length;
     const absent = attendance.filter((a) => a.status === "absent").length;
@@ -978,103 +983,91 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
             Nenašli sa žiadni žiaci pre tento filter.
           </p>
         ) : (
-          <div className="grid gap-4 md:hidden">
-            <div className="rounded-[26px] bg-[#f7f2e8] p-3 ring-1 ring-black/5">
+          <div className="grid gap-3 md:hidden">
+            <div className="overflow-hidden rounded-[26px] bg-[#f7f2e8] p-3 ring-1 ring-black/5">
               <div className="mb-3 flex items-center justify-between gap-3">
-                <div>
+                <div className="min-w-0">
                   <p className="text-xs font-black uppercase tracking-[0.14em] text-black/35">
                     Vybraný tréning
                   </p>
-                  <h3 className="text-xl font-black">
+                  <h3 className="truncate text-xl font-black">
                     {selectedMobileTraining
-                      ? formatDate(selectedMobileTraining.training_date)
+                      ? `${formatDate(selectedMobileTraining.training_date)} · ${selectedMobileTraining.training_topics?.name || "Bez témy"}`
                       : "Bez tréningu"}
                   </h3>
                 </div>
 
-                <span className="rounded-2xl bg-white px-3 py-2 text-xs font-black text-black/55">
+                <span className="shrink-0 rounded-2xl bg-white px-3 py-2 text-xs font-black text-black/55">
                   {filteredStudents.length} žiakov
                 </span>
               </div>
 
-              <div className="-mx-3 overflow-x-auto px-3 pb-2">
-                <div className="flex min-w-max gap-2">
-                  {trainings.map((training) => {
-                    const activeTraining =
-                      selectedMobileTraining?.id === training.id;
-                    const trainingAttendance = attendance.filter(
-                      (item) => item.training_id === training.id
-                    );
-                    const presentCount = trainingAttendance.filter(
-                      (item) => item.status === "present"
-                    ).length;
-                    const absentCount = trainingAttendance.filter(
-                      (item) => item.status === "absent"
-                    ).length;
-
-                    return (
-                      <button
-                        type="button"
-                        key={training.id}
-                        onClick={() => setSelectedMobileTrainingId(training.id)}
-                        className={`w-[150px] rounded-3xl border p-3 text-left active:scale-[0.98] ${
-                          activeTraining
-                            ? "border-[#d71920] bg-white shadow-sm"
-                            : `${topicColor(training.topic_id)} opacity-80`
-                        }`}
-                      >
-                        <p className="text-2xl font-black">
-                          {formatDate(training.training_date)}
-                        </p>
-                        <p className="text-xs font-bold text-black/45">
-                          {formatLongDate(training.training_date)}
-                        </p>
-                        <p className="mt-2 truncate text-xs font-black text-black/60">
-                          {training.training_topics?.name || "Bez témy"}
-                        </p>
-                        <div className="mt-2 flex gap-1 text-[11px] font-black">
-                          <span className="rounded-full bg-green-100 px-2 py-1 text-green-800">
-                            ✓ {presentCount}
-                          </span>
-                          <span className="rounded-full bg-red-100 px-2 py-1 text-red-800">
-                            ✕ {absentCount}
-                          </span>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
               {selectedMobileTraining && (
-                <div
-                  className={`mt-2 rounded-3xl border p-3 ${topicColor(
-                    selectedMobileTraining.topic_id
-                  )}`}
-                >
-                  <div className="mb-3 flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-black text-black/45">
-                        Téma tréningu
-                      </p>
-                      <p className="truncate text-lg font-black">
-                        {selectedMobileTraining.training_topics?.name || "Bez témy"}
+                <div className={`rounded-3xl border p-3 ${topicColor(selectedMobileTraining.topic_id)}`}>
+                  <div className="mb-3 grid grid-cols-[46px_1fr_46px] items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={selectedMobileTrainingIndex <= 0}
+                      onClick={() => {
+                        const previous = trainings[selectedMobileTrainingIndex - 1];
+                        if (previous) setSelectedMobileTrainingId(previous.id);
+                      }}
+                      className="flex h-12 items-center justify-center rounded-2xl bg-white text-2xl font-black disabled:opacity-35 active:scale-[0.98]"
+                      aria-label="Predchádzajúci tréning"
+                    >
+                      ‹
+                    </button>
+
+                    <select
+                      value={selectedMobileTraining.id}
+                      onChange={(e) => setSelectedMobileTrainingId(e.target.value)}
+                      className="h-12 w-full min-w-0 rounded-2xl border border-black/10 bg-white px-3 text-center text-base font-black outline-none"
+                    >
+                      {trainings.map((training) => (
+                        <option key={training.id} value={training.id}>
+                          {formatDate(training.training_date)} · {training.training_topics?.name || "Bez témy"}
+                        </option>
+                      ))}
+                    </select>
+
+                    <button
+                      type="button"
+                      disabled={selectedMobileTrainingIndex < 0 || selectedMobileTrainingIndex >= trainings.length - 1}
+                      onClick={() => {
+                        const next = trainings[selectedMobileTrainingIndex + 1];
+                        if (next) setSelectedMobileTrainingId(next.id);
+                      }}
+                      className="flex h-12 items-center justify-center rounded-2xl bg-white text-2xl font-black disabled:opacity-35 active:scale-[0.98]"
+                      aria-label="Nasledujúci tréning"
+                    >
+                      ›
+                    </button>
+                  </div>
+
+                  <div className="mb-3 grid grid-cols-3 gap-2 text-center">
+                    <div className="rounded-2xl bg-white/80 p-3">
+                      <p className="text-xs font-black text-black/45">Dátum</p>
+                      <p className="text-lg font-black">{formatDate(selectedMobileTraining.training_date)}</p>
+                    </div>
+                    <div className="rounded-2xl bg-white/80 p-3">
+                      <p className="text-xs font-black text-black/45">Prítomní</p>
+                      <p className="text-lg font-black text-green-700">
+                        {attendance.filter((item) => item.training_id === selectedMobileTraining.id && item.status === "present").length}
                       </p>
                     </div>
-
-                    <span className="shrink-0 rounded-2xl bg-white px-3 py-2 text-xs font-black text-black/55">
-                      {formatLongDate(selectedMobileTraining.training_date)}
-                    </span>
+                    <div className="rounded-2xl bg-white/80 p-3">
+                      <p className="text-xs font-black text-black/45">Neprítomní</p>
+                      <p className="text-lg font-black text-red-700">
+                        {attendance.filter((item) => item.training_id === selectedMobileTraining.id && item.status === "absent").length}
+                      </p>
+                    </div>
                   </div>
 
                   {canCreateTrainings && (
                     <select
                       value={selectedMobileTraining.topic_id || ""}
                       onChange={(e) =>
-                        updateTrainingTopic(
-                          selectedMobileTraining.id,
-                          e.target.value
-                        )
+                        updateTrainingTopic(selectedMobileTraining.id, e.target.value)
                       }
                       className="mb-3 h-[46px] w-full rounded-2xl border border-black/10 bg-white px-3 text-sm font-bold"
                     >
@@ -1119,7 +1112,7 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
             </div>
 
             {selectedMobileTraining && (
-              <div className="grid gap-2">
+              <div className="overflow-hidden rounded-[26px] bg-white ring-1 ring-black/10">
                 {filteredStudents.map((student) => {
                   const hidden = hiddenStudents.includes(student.id);
                   const status = getAttendance(selectedMobileTraining.id, student.id);
@@ -1127,94 +1120,81 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
                   return (
                     <div
                       key={student.id}
-                      className={`rounded-[24px] border border-black/10 bg-white p-3 shadow-sm ${
+                      className={`border-b border-black/5 p-3 last:border-b-0 ${
                         hidden ? "opacity-45" : ""
                       }`}
                     >
-                      <div className="mb-3 flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-lg font-black leading-tight">
+                      <div className="grid grid-cols-[1fr_132px] items-center gap-3">
+                        <button
+                          type="button"
+                          disabled={!canWriteAttendance}
+                          onClick={() =>
+                            setHiddenStudents((prev) =>
+                              prev.includes(student.id)
+                                ? prev.filter((id) => id !== student.id)
+                                : [...prev, student.id]
+                            )
+                          }
+                          className="min-w-0 text-left active:scale-[0.99] disabled:opacity-60"
+                        >
+                          <p className="truncate text-base font-black leading-tight">
                             {student.first_name} {student.last_name}
                           </p>
                           <p className="truncate text-sm font-bold text-black/50">
                             {student.technical_grade || "Bez stupňa"}
                           </p>
-                        </div>
+                        </button>
 
-                        {canWriteAttendance && (
+                        <div className="grid grid-cols-3 gap-1">
                           <button
                             type="button"
+                            disabled={!canWriteAttendance || hidden}
                             onClick={() =>
-                              setHiddenStudents((prev) =>
-                                prev.includes(student.id)
-                                  ? prev.filter((id) => id !== student.id)
-                                  : [...prev, student.id]
+                              setAttendanceStatus(
+                                selectedMobileTraining.id,
+                                student.id,
+                                "present"
                               )
                             }
-                            className={`shrink-0 rounded-2xl px-3 py-2 text-xs font-black ${
-                              hidden
-                                ? "bg-green-100 text-green-800"
-                                : "bg-red-50 text-red-700"
+                            className={`flex h-11 items-center justify-center rounded-xl text-white disabled:opacity-40 ${
+                              status === "present" ? "bg-green-600" : "bg-black/15"
                             }`}
                           >
-                            {hidden ? "Vrátiť" : "Skryť"}
+                            <Check size={20} />
                           </button>
-                        )}
-                      </div>
 
-                      <div className="grid grid-cols-3 gap-2">
-                        <button
-                          type="button"
-                          disabled={!canWriteAttendance || hidden}
-                          onClick={() =>
-                            setAttendanceStatus(
-                              selectedMobileTraining.id,
-                              student.id,
-                              "present"
-                            )
-                          }
-                          className={`flex h-12 items-center justify-center rounded-2xl text-white disabled:opacity-40 ${
-                            status === "present" ? "bg-green-600" : "bg-black/15"
-                          }`}
-                        >
-                          <Check size={21} />
-                        </button>
+                          <button
+                            type="button"
+                            disabled={!canWriteAttendance || hidden}
+                            onClick={() =>
+                              setAttendanceStatus(
+                                selectedMobileTraining.id,
+                                student.id,
+                                "absent"
+                              )
+                            }
+                            className={`flex h-11 items-center justify-center rounded-xl text-white disabled:opacity-40 ${
+                              status === "absent" ? "bg-red-600" : "bg-black/15"
+                            }`}
+                          >
+                            <X size={20} />
+                          </button>
 
-                        <button
-                          type="button"
-                          disabled={!canWriteAttendance || hidden}
-                          onClick={() =>
-                            setAttendanceStatus(
-                              selectedMobileTraining.id,
-                              student.id,
-                              "absent"
-                            )
-                          }
-                          className={`flex h-12 items-center justify-center rounded-2xl text-white disabled:opacity-40 ${
-                            status === "absent" ? "bg-red-600" : "bg-black/15"
-                          }`}
-                        >
-                          <X size={21} />
-                        </button>
-
-                        <button
-                          type="button"
-                          disabled={!canWriteAttendance || hidden}
-                          onClick={() =>
-                            setAttendanceStatus(
-                              selectedMobileTraining.id,
-                              student.id,
-                              null
-                            )
-                          }
-                          className={`flex h-12 items-center justify-center rounded-2xl disabled:opacity-40 ${
-                            status === null
-                              ? "bg-[#111] text-white"
-                              : "bg-black/10 text-black"
-                          }`}
-                        >
-                          <XCircle size={21} />
-                        </button>
+                          <button
+                            type="button"
+                            disabled={!canWriteAttendance || hidden}
+                            onClick={() =>
+                              setAttendanceStatus(selectedMobileTraining.id, student.id, null)
+                            }
+                            className={`flex h-11 items-center justify-center rounded-xl disabled:opacity-40 ${
+                              status === null
+                                ? "bg-[#111] text-white"
+                                : "bg-black/10 text-black"
+                            }`}
+                          >
+                            <XCircle size={20} />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );
