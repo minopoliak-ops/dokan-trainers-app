@@ -69,16 +69,30 @@ function formatLongDate(date: string) {
   });
 }
 
-function statusText(status: Status) {
-  if (status === "present") return "Prítomný";
-  if (status === "absent") return "Neprítomný";
-  return "Neoznačené";
+function formatMonthLabel(value: string) {
+  if (!value) return "Vyber mesiac";
+
+  const [year, month] = value.split("-").map(Number);
+  const d = new Date(year, month - 1, 1);
+
+  return d.toLocaleDateString("sk-SK", {
+    month: "long",
+    year: "numeric",
+  });
 }
 
-function statusBadge(status: Status) {
-  if (status === "present") return "bg-green-100 text-green-800";
-  if (status === "absent") return "bg-red-100 text-red-800";
-  return "bg-black/10 text-black/60";
+function previousMonthValue(value: string) {
+  const [year, month] = value.split("-").map(Number);
+  const d = new Date(year, month - 2, 1);
+
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function nextMonthValue(value: string) {
+  const [year, month] = value.split("-").map(Number);
+  const d = new Date(year, month, 1);
+
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
 export default function AttendancePage({ params }: { params: { id: string } }) {
@@ -672,23 +686,50 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
         </div>
       </div>
 
-      <div className="grid min-w-0 gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto]">
-        <div className="min-w-0 overflow-hidden rounded-[26px] bg-white p-4 shadow-sm ring-1 ring-black/10">
+      <div className="grid gap-3 md:grid-cols-[1fr_auto_auto]">
+        <div className="overflow-hidden rounded-[26px] bg-white p-4 shadow-sm ring-1 ring-black/10">
           <label className="mb-2 block text-sm font-black text-black/55">
             Mesiac
           </label>
-          <input
-            type="month"
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(e.target.value)}
-            className="box-border h-[52px] w-full min-w-0 max-w-full rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 text-center text-base font-black outline-none focus:border-[#d71920] focus:bg-white"
-          />
+
+          <div className="grid grid-cols-[48px_1fr_48px] items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSelectedMonth(previousMonthValue(selectedMonth))}
+              className="flex h-[52px] items-center justify-center rounded-2xl bg-[#f7f2e8] text-xl font-black active:scale-[0.98]"
+              aria-label="Predchádzajúci mesiac"
+            >
+              ‹
+            </button>
+
+            <div className="relative min-w-0 overflow-hidden rounded-2xl bg-[#f7f2e8]">
+              <div className="pointer-events-none flex h-[52px] w-full items-center justify-center px-3 text-center text-base font-black capitalize text-[#111]">
+                {formatMonthLabel(selectedMonth)}
+              </div>
+              <input
+                type="month"
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                aria-label="Vyber mesiac"
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setSelectedMonth(nextMonthValue(selectedMonth))}
+              className="flex h-[52px] items-center justify-center rounded-2xl bg-[#f7f2e8] text-xl font-black active:scale-[0.98]"
+              aria-label="Nasledujúci mesiac"
+            >
+              ›
+            </button>
+          </div>
         </div>
 
         <button
           type="button"
           onClick={loadData}
-          className="inline-flex min-h-[58px] items-center justify-center gap-2 rounded-[26px] bg-white px-5 py-4 font-black shadow-sm ring-1 ring-black/10 active:scale-[0.98]"
+          className="inline-flex items-center justify-center gap-2 rounded-[26px] bg-white px-5 py-4 font-black shadow-sm ring-1 ring-black/10 active:scale-[0.98]"
         >
           <RefreshCcw size={18} />
           Obnoviť
@@ -698,7 +739,7 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
           <button
             type="button"
             onClick={() => setShowSetup((v) => !v)}
-            className="inline-flex min-h-[58px] items-center justify-center gap-2 rounded-[26px] bg-[#d71920] px-5 py-4 font-black text-white shadow-[0_8px_18px_rgba(215,25,32,0.25)] active:scale-[0.98]"
+            className="inline-flex items-center justify-center gap-2 rounded-[26px] bg-[#d71920] px-5 py-4 font-black text-white shadow-[0_8px_18px_rgba(215,25,32,0.25)] active:scale-[0.98]"
           >
             <Sparkles size={18} />
             {showSetup ? "Skryť nastavenia" : "Nastavenia tréningov"}
@@ -719,7 +760,7 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
               <select
                 value={bulkTopicId}
                 onChange={(e) => setBulkTopicId(e.target.value)}
-                className="h-[52px] rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 font-bold"
+                className="h-[52px] min-w-0 rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 font-bold"
               >
                 <option value="">Bez témy</option>
                 {topics.map((topic) => (
@@ -776,13 +817,13 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
                 value={generateTitle}
                 onChange={(e) => setGenerateTitle(e.target.value)}
                 placeholder="Názov tréningu"
-                className="h-[52px] rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 font-bold"
+                className="h-[52px] min-w-0 rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 font-bold"
               />
 
               <select
                 value={generateTopicId}
                 onChange={(e) => setGenerateTopicId(e.target.value)}
-                className="h-[52px] rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 font-bold"
+                className="h-[52px] min-w-0 rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 font-bold"
               >
                 <option value="">Bez témy</option>
                 {topics.map((topic) => (
@@ -811,20 +852,20 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
                 type="date"
                 value={trainingDate}
                 onChange={(e) => setTrainingDate(e.target.value)}
-                className="h-[52px] rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 font-bold"
+                className="h-[52px] min-w-0 rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 font-bold"
               />
 
               <input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Názov tréningu"
-                className="h-[52px] rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 font-bold"
+                className="h-[52px] min-w-0 rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 font-bold"
               />
 
               <select
                 value={topicId}
                 onChange={(e) => setTopicId(e.target.value)}
-                className="h-[52px] rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 font-bold"
+                className="h-[52px] min-w-0 rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 font-bold"
               >
                 <option value="">Bez témy</option>
                 {topics.map((topic) => (
@@ -847,7 +888,7 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
         </div>
       )}
 
-      <div className="rounded-[30px] bg-white p-4 shadow-sm ring-1 ring-black/10 sm:p-5">
+      <div className="rounded-[30px] bg-white p-5 shadow-sm ring-1 ring-black/10">
         <div className="mb-4 grid gap-3 md:grid-cols-[1fr_auto_auto]">
           <div>
             <p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">
@@ -928,175 +969,165 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
             Nenašli sa žiadni žiaci pre tento filter.
           </p>
         ) : (
-          <>
-            <div className="grid gap-4 md:hidden">
-              {filteredStudents.map((student) => {
-                const hidden = hiddenStudents.includes(student.id);
+          <div className="grid gap-4 md:hidden">
+            {filteredStudents.map((student) => {
+              const hidden = hiddenStudents.includes(student.id);
 
-                return (
-                  <div
-                    key={student.id}
-                    className={`overflow-hidden rounded-[26px] border border-black/10 bg-white shadow-sm ${
-                      hidden ? "opacity-45" : ""
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3 border-b border-black/10 bg-[#f7f2e8] p-4">
-                      <div className="min-w-0">
-                        <p className="break-words text-xl font-black leading-tight">
-                          {student.first_name} {student.last_name}
-                        </p>
-                        <p className="mt-1 text-sm font-bold text-black/55">
-                          {student.technical_grade || "Bez stupňa"}
-                        </p>
-                      </div>
-
-                      {canWriteAttendance && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setHiddenStudents((prev) =>
-                              prev.includes(student.id)
-                                ? prev.filter((id) => id !== student.id)
-                                : [...prev, student.id]
-                            )
-                          }
-                          className={`shrink-0 rounded-2xl px-3 py-2 text-xs font-black ${
-                            hidden
-                              ? "bg-green-100 text-green-800"
-                              : "bg-red-50 text-red-700"
-                          }`}
-                        >
-                          {hidden ? "Vrátiť" : "Skryť"}
-                        </button>
-                      )}
+              return (
+                <div
+                  key={student.id}
+                  className={`overflow-hidden rounded-[26px] border border-black/10 bg-[#f7f2e8] ${
+                    hidden ? "opacity-45" : ""
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3 bg-white p-4">
+                    <div className="min-w-0">
+                      <p className="break-words text-xl font-black leading-tight">
+                        {student.first_name} {student.last_name}
+                      </p>
+                      <p className="mt-1 text-sm font-bold text-black/55">
+                        {student.technical_grade || "Bez stupňa"}
+                      </p>
                     </div>
 
-                    <div className="grid gap-3 p-3">
-                      {trainings.map((training) => {
-                        const status = getAttendance(training.id, student.id);
+                    {canWriteAttendance && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setHiddenStudents((prev) =>
+                            prev.includes(student.id)
+                              ? prev.filter((id) => id !== student.id)
+                              : [...prev, student.id]
+                          )
+                        }
+                        className={`shrink-0 rounded-2xl px-4 py-2 text-sm font-black ${
+                          hidden
+                            ? "bg-green-100 text-green-800"
+                            : "bg-red-50 text-red-700"
+                        }`}
+                      >
+                        {hidden ? "Vrátiť" : "Skryť"}
+                      </button>
+                    )}
+                  </div>
 
-                        return (
-                          <div
-                            key={training.id}
-                            className={`rounded-3xl border p-3 ${topicColor(
-                              training.topic_id
-                            )}`}
-                          >
-                            <div className="mb-3 flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <p className="text-2xl font-black">
-                                  {formatDate(training.training_date)}
-                                </p>
-                                <p className="text-xs font-bold text-black/45">
-                                  {formatLongDate(training.training_date)}
-                                </p>
-                              </div>
+                  <div className="grid gap-3 p-3">
+                    {trainings.map((training) => {
+                      const status = getAttendance(training.id, student.id);
 
-                              <span
-                                className={`shrink-0 rounded-2xl px-3 py-2 text-xs font-black ${statusBadge(
-                                  status
-                                )}`}
-                              >
-                                {statusText(status)}
-                              </span>
-                            </div>
-
-                            {canCreateTrainings ? (
-                              <select
-                                value={training.topic_id || ""}
-                                onChange={(e) =>
-                                  updateTrainingTopic(training.id, e.target.value)
-                                }
-                                className="mb-3 h-11 w-full rounded-2xl border bg-white px-3 text-xs font-bold"
-                              >
-                                <option value="">Bez témy</option>
-                                {topics.map((topic) => (
-                                  <option key={topic.id} value={topic.id}>
-                                    {topic.name}
-                                  </option>
-                                ))}
-                              </select>
-                            ) : (
-                              <p className="mb-3 text-xs font-bold">
-                                {training.training_topics?.name || "Bez témy"}
+                      return (
+                        <div
+                          key={training.id}
+                          className={`rounded-3xl border p-3 ${topicColor(
+                            training.topic_id
+                          )}`}
+                        >
+                          <div className="mb-3 flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-2xl font-black">
+                                {formatDate(training.training_date)}
                               </p>
-                            )}
-
-                            <div className="grid grid-cols-3 gap-2">
-                              <button
-                                type="button"
-                                disabled={!canWriteAttendance || hidden}
-                                onClick={() =>
-                                  setAttendanceStatus(
-                                    training.id,
-                                    student.id,
-                                    "present"
-                                  )
-                                }
-                                className={`inline-flex h-12 items-center justify-center gap-1 rounded-2xl text-sm font-black disabled:opacity-40 ${
-                                  status === "present"
-                                    ? "bg-green-600 text-white"
-                                    : "bg-white text-green-700 ring-1 ring-green-200"
-                                }`}
-                              >
-                                <Check size={18} />
-                                Áno
-                              </button>
-
-                              <button
-                                type="button"
-                                disabled={!canWriteAttendance || hidden}
-                                onClick={() =>
-                                  setAttendanceStatus(
-                                    training.id,
-                                    student.id,
-                                    "absent"
-                                  )
-                                }
-                                className={`inline-flex h-12 items-center justify-center gap-1 rounded-2xl text-sm font-black disabled:opacity-40 ${
-                                  status === "absent"
-                                    ? "bg-red-600 text-white"
-                                    : "bg-white text-red-700 ring-1 ring-red-200"
-                                }`}
-                              >
-                                <X size={18} />
-                                Nie
-                              </button>
-
-                              <button
-                                type="button"
-                                disabled={!canWriteAttendance || hidden}
-                                onClick={() =>
-                                  setAttendanceStatus(training.id, student.id, null)
-                                }
-                                className={`inline-flex h-12 items-center justify-center rounded-2xl text-sm font-black disabled:opacity-40 ${
-                                  status === null
-                                    ? "bg-[#111] text-white"
-                                    : "bg-white text-black ring-1 ring-black/10"
-                                }`}
-                              >
-                                <XCircle size={18} />
-                              </button>
+                              <p className="text-xs font-bold text-black/45">
+                                {formatLongDate(training.training_date)}
+                              </p>
                             </div>
+
+                            <p className="max-w-[150px] truncate rounded-2xl bg-white px-3 py-2 text-xs font-black text-black/60">
+                              {training.training_topics?.name || "Bez témy"}
+                            </p>
+                          </div>
+
+                          {canCreateTrainings && (
+                            <select
+                              value={training.topic_id || ""}
+                              onChange={(e) =>
+                                updateTrainingTopic(training.id, e.target.value)
+                              }
+                              className="mb-3 h-[44px] w-full rounded-2xl border border-black/10 bg-white px-3 text-sm font-bold"
+                            >
+                              <option value="">Bez témy</option>
+                              {topics.map((topic) => (
+                                <option key={topic.id} value={topic.id}>
+                                  {topic.name}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+
+                          <div className="grid grid-cols-3 gap-2">
+                            <button
+                              type="button"
+                              disabled={!canWriteAttendance || hidden}
+                              onClick={() =>
+                                setAttendanceStatus(
+                                  training.id,
+                                  student.id,
+                                  "present"
+                                )
+                              }
+                              className={`flex h-12 items-center justify-center rounded-2xl text-white disabled:opacity-40 ${
+                                status === "present"
+                                  ? "bg-green-600"
+                                  : "bg-black/15"
+                              }`}
+                            >
+                              <Check size={20} />
+                            </button>
 
                             <button
                               type="button"
                               disabled={!canWriteAttendance || hidden}
-                              onClick={() => cycleAttendance(training.id, student.id)}
-                              className="mt-2 w-full rounded-2xl bg-black/5 py-2 text-xs font-black text-black/45 disabled:opacity-40"
+                              onClick={() =>
+                                setAttendanceStatus(
+                                  training.id,
+                                  student.id,
+                                  "absent"
+                                )
+                              }
+                              className={`flex h-12 items-center justify-center rounded-2xl text-white disabled:opacity-40 ${
+                                status === "absent" ? "bg-red-600" : "bg-black/15"
+                              }`}
                             >
-                              cyklus: neoznačené → prítomný → neprítomný
+                              <X size={20} />
+                            </button>
+
+                            <button
+                              type="button"
+                              disabled={!canWriteAttendance || hidden}
+                              onClick={() =>
+                                setAttendanceStatus(training.id, student.id, null)
+                              }
+                              className={`flex h-12 items-center justify-center rounded-2xl disabled:opacity-40 ${
+                                status === null
+                                  ? "bg-[#111] text-white"
+                                  : "bg-black/10 text-black"
+                              }`}
+                            >
+                              <XCircle size={20} />
                             </button>
                           </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
 
-            <div className="-mx-5 hidden overflow-x-auto px-5 md:block">
+                          <button
+                            type="button"
+                            disabled={!canWriteAttendance || hidden}
+                            onClick={() => cycleAttendance(training.id, student.id)}
+                            className="mt-2 w-full rounded-2xl bg-white/80 py-2 text-xs font-black text-black/45 disabled:opacity-40"
+                          >
+                            cyklus: prítomný → neprítomný → prázdne
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {trainings.length > 0 && filteredStudents.length > 0 && (
+          <div className="hidden md:block">
+            <div className="-mx-5 overflow-x-auto px-5">
               <table className="min-w-max border-separate border-spacing-0">
                 <thead>
                   <tr>
@@ -1295,7 +1326,7 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
                 </tbody>
               </table>
             </div>
-          </>
+          </div>
         )}
       </div>
 
