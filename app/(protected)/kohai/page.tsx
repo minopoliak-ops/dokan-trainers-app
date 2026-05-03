@@ -5,9 +5,13 @@ import { usePermissions } from "@/lib/usePermissions";
 import {
   Check,
   ChevronDown,
+  Copy,
   KeyRound,
+  Mail,
+  RefreshCcw,
   ShieldCheck,
   Trash2,
+  UserCheck,
   UserCog,
   UserPlus,
   Users,
@@ -30,6 +34,43 @@ type KohaiForm = {
   can_create_trainings: boolean;
   can_manage_topics: boolean;
 };
+
+type LastAccess = {
+  email: string;
+  password: string | null;
+};
+
+function passwordEmailBody(email: string, password: string | null) {
+  if (!password) {
+    return `Ahoj,
+
+bol ti vytvorený prístup do DOKAN Trénerskej zóny.
+
+Prihlásenie:
+${typeof window !== "undefined" ? window.location.origin : "https://app.dokanbratislava.online"}
+
+Email:
+${email}
+
+Heslo nie je uložené v aplikácii. Použi reset hesla alebo požiadaj administrátora o nové dočasné heslo.`;
+  }
+
+  return `Ahoj,
+
+bol ti vytvorený prístup do DOKAN Trénerskej zóny.
+
+Prihlásenie:
+${typeof window !== "undefined" ? window.location.origin : "https://app.dokanbratislava.online"}
+
+Email:
+${email}
+
+Dočasné heslo:
+${password}
+
+Po prvom prihlásení si heslo zmeň.`;
+}
+
 
 const permissionCards: { key: PermissionKey; title: string; subtitle: string }[] = [
   {
@@ -78,6 +119,8 @@ export default function KohaiPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [creatingAccessId, setCreatingAccessId] = useState("");
+  const [resettingAccessId, setResettingAccessId] = useState("");
+  const [lastAccess, setLastAccess] = useState<Record<string, LastAccess>>({});
 
   const isAdmin = !!permissions?.can_manage_trainers;
 
@@ -289,9 +332,19 @@ export default function KohaiPage() {
         return;
       }
 
+      const password = data.password || data.temporary_password || null;
+
+      setLastAccess((current) => ({
+        ...current,
+        [person.id]: {
+          email: data.email || person.email,
+          password,
+        },
+      }));
+
       alert(
         `Prístup vytvorený ✅\n\nEmail: ${data.email || person.email}\nHeslo: ${
-          data.password || data.temporary_password || "pozri email / Supabase Auth"
+          password || "pozri email / Supabase Auth"
         }`
       );
 
@@ -301,6 +354,48 @@ export default function KohaiPage() {
     } finally {
       setCreatingAccessId("");
     }
+  }
+
+
+  async function sendResetPassword(person: any) {
+    if (!person.email) return alert("Kohai nemá vyplnený email.");
+
+    setResettingAccessId(person.id);
+
+    try {
+      const supabase = createClient();
+
+      const { error } = await supabase.auth.resetPasswordForEmail(person.email, {
+        redirectTo:
+          typeof window !== "undefined"
+            ? `${window.location.origin}/login`
+            : undefined,
+      });
+
+      if (error) return alert(error.message);
+
+      alert(`Reset hesla bol odoslaný na email:\n${person.email}`);
+    } finally {
+      setResettingAccessId("");
+    }
+  }
+
+  async function copyPassword(personId: string) {
+    const access = lastAccess[personId];
+    if (!access?.password) return alert("Heslo nie je dostupné. Pošli reset hesla.");
+
+    await navigator.clipboard.writeText(access.password);
+    alert("Heslo skopírované.");
+  }
+
+  function openPasswordEmail(person: any) {
+    const access = lastAccess[person.id];
+    const subject = "DOKAN Trénerská zóna - prístup";
+    const body = passwordEmailBody(person.email, access?.password || null);
+
+    window.location.href = `mailto:${person.email}?subject=${encodeURIComponent(
+      subject
+    )}&body=${encodeURIComponent(body)}`;
   }
 
   async function removeKohai(id: string) {
@@ -524,6 +619,9 @@ export default function KohaiPage() {
                 .filter((item) => !!person[item.key])
                 .map((item) => item.title);
 
+              const hasAccess = !!person.user_id;
+              const access = lastAccess[person.id];
+
               return (
                 <div
                   key={person.id}
@@ -535,11 +633,22 @@ export default function KohaiPage() {
                     className="flex w-full items-center justify-between gap-3 p-4 text-left active:scale-[0.99]"
                   >
                     <div className="min-w-0">
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <UserCog className="text-[#d71920]" size={20} />
                         <h3 className="break-words text-xl font-black">
                           {person.full_name || person.email}
                         </h3>
+
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-black ${
+                            hasAccess
+                              ? "bg-green-100 text-green-800"
+                              : "bg-amber-100 text-amber-900"
+                          }`}
+                        >
+                          {hasAccess ? <UserCheck size={13} /> : <KeyRound size={13} />}
+                          {hasAccess ? "Prístup aktívny" : "Bez loginu"}
+                        </span>
                       </div>
 
                       <p className="mt-1 break-all text-sm font-semibold text-black/55">
@@ -558,17 +667,62 @@ export default function KohaiPage() {
                     <ChevronDown className="-rotate-90 shrink-0" />
                   </button>
 
-                  <div className="grid gap-2 border-t border-black/5 p-3 md:grid-cols-2">
+                  {access?.password && (
+                    <div className="border-t border-black/5 bg-green-50 p-3">
+                      <div className="rounded-2xl bg-white p-3 ring-1 ring-green-200">
+                        <p className="text-xs font-black uppercase tracking-[0.12em] text-green-700">
+                          Posledné vytvorené dočasné heslo
+                        </p>
+                        <p className="mt-1 break-all text-lg font-black text-black">
+                          {access.password}
+                        </p>
+                        <p className="mt-1 text-xs font-semibold text-black/45">
+                          Heslo sa zobrazí iba teraz. Potom použi reset hesla.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid gap-2 border-t border-black/5 p-3 md:grid-cols-2 xl:grid-cols-4">
                     <button
                       type="button"
                       onClick={() => createLoginForKohai(person)}
                       disabled={creatingAccessId === person.id}
-                      className="inline-flex h-[48px] w-full items-center justify-center gap-2 rounded-2xl bg-[#111] px-4 font-black text-white active:scale-[0.98] disabled:opacity-60"
+                      className={`inline-flex h-[48px] w-full items-center justify-center gap-2 rounded-2xl px-4 font-black active:scale-[0.98] disabled:opacity-60 ${
+                        hasAccess
+                          ? "bg-green-600 text-white"
+                          : "bg-[#111] text-white"
+                      }`}
                     >
-                      <KeyRound size={18} />
+                      {hasAccess ? <UserCheck size={18} /> : <KeyRound size={18} />}
                       {creatingAccessId === person.id
                         ? "Vytváram prístup..."
-                        : "Automaticky vytvoriť prístup"}
+                        : hasAccess
+                        ? "Prístup aktívny"
+                        : "Vytvoriť prístup"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => openPasswordEmail(person)}
+                      className="inline-flex h-[48px] w-full items-center justify-center gap-2 rounded-2xl bg-white px-4 font-black text-black ring-1 ring-black/10 active:scale-[0.98]"
+                    >
+                      <Mail size={18} />
+                      Poslať údaje
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => (access?.password ? copyPassword(person.id) : sendResetPassword(person))}
+                      disabled={resettingAccessId === person.id}
+                      className="inline-flex h-[48px] w-full items-center justify-center gap-2 rounded-2xl bg-black/10 px-4 font-black text-black active:scale-[0.98] disabled:opacity-60"
+                    >
+                      {access?.password ? <Copy size={18} /> : <RefreshCcw size={18} />}
+                      {resettingAccessId === person.id
+                        ? "Odosielam..."
+                        : access?.password
+                        ? "Kopírovať heslo"
+                        : "Reset hesla"}
                     </button>
 
                     <button
@@ -577,7 +731,7 @@ export default function KohaiPage() {
                       className="inline-flex h-[48px] w-full items-center justify-center gap-2 rounded-2xl bg-white px-4 font-black text-red-700 active:scale-[0.98]"
                     >
                       <Trash2 size={18} />
-                      Odobrať prístup
+                      Odobrať
                     </button>
                   </div>
                 </div>
