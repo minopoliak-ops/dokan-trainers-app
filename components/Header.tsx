@@ -39,18 +39,18 @@ export default function Header({ email }: { email?: string }) {
 
   const [unreadChatCount, setUnreadChatCount] = useState(0);
   const [latestChatHref, setLatestChatHref] = useState("/chat");
-  const [openSubstitutionCount, setOpenSubstitutionCount] = useState(0);
-  const [acceptedMySubstitutionCount, setAcceptedMySubstitutionCount] = useState(0);
+
+  const [unseenSubstitutionCount, setUnseenSubstitutionCount] = useState(0);
+  const [latestSubstitutionType, setLatestSubstitutionType] = useState<"open" | "accepted">("open");
 
   const isAdmin = !!permissions?.can_manage_trainers;
   const notificationsEnabled = permissions?.chat_notifications_enabled !== false;
-  const substitutionCount = openSubstitutionCount + acceptedMySubstitutionCount;
 
   const showTopChatBanner =
     unreadChatCount > 0 && notificationsEnabled && pathname !== "/chat";
 
   const showTopSubstitutionBanner =
-    substitutionCount > 0 && pathname !== "/substitutions";
+    unseenSubstitutionCount > 0 && pathname !== "/substitutions";
 
   async function logout() {
     const supabase = createClient();
@@ -150,8 +150,8 @@ export default function Header({ email }: { email?: string }) {
 
   async function loadSubstitutionCount() {
     if (!permissions?.id) {
-      setOpenSubstitutionCount(0);
-      setAcceptedMySubstitutionCount(0);
+      setUnseenSubstitutionCount(0);
+      setLatestSubstitutionType("open");
       return;
     }
 
@@ -159,38 +159,47 @@ export default function Header({ email }: { email?: string }) {
 
     const { data, error } = await supabase
       .from("training_substitution_requests")
-      .select("id, requester_id, substitute_id, status, request_date, end_date, created_at")
+      .select("id, requester_id, substitute_id, status, request_date, end_date, seen_by, created_at")
       .order("created_at", { ascending: false })
       .limit(300);
 
     if (error) {
       console.error("Header substitution notification:", error.message);
-      setOpenSubstitutionCount(0);
-      setAcceptedMySubstitutionCount(0);
+      setUnseenSubstitutionCount(0);
       return;
     }
 
     const todayValue = new Date().toISOString().slice(0, 10);
     const rows = data || [];
 
-    const open = rows.filter((r: any) => r.status === "open").length;
+    const unseen = rows.filter((r: any) => {
+      const seenBy: string[] = Array.isArray(r.seen_by) ? r.seen_by : [];
 
-    const acceptedMine = rows.filter((r: any) => {
-      if (r.status !== "accepted") return false;
+      if (seenBy.includes(permissions.id)) return false;
 
-      const isRequester = r.requester_id === permissions.id;
-      const isSubstitute = r.substitute_id === permissions.id;
+      if (r.status === "open") {
+        return true;
+      }
 
-      if (!isRequester && !isSubstitute) return false;
+      if (r.status === "accepted") {
+        const isRequester = r.requester_id === permissions.id;
+        const isSubstitute = r.substitute_id === permissions.id;
 
-      const end = r.end_date || r.request_date;
-      if (!end) return true;
+        if (!isRequester && !isSubstitute) return false;
 
-      return todayValue <= end;
-    }).length;
+        const end = r.end_date || r.request_date;
+        if (!end) return true;
 
-    setOpenSubstitutionCount(open);
-    setAcceptedMySubstitutionCount(acceptedMine);
+        return todayValue <= end;
+      }
+
+      return false;
+    });
+
+    setUnseenSubstitutionCount(unseen.length);
+
+    const newest = unseen[0];
+    setLatestSubstitutionType(newest?.status === "accepted" ? "accepted" : "open");
   }
 
   async function loadNotifications() {
@@ -261,7 +270,7 @@ export default function Header({ email }: { email?: string }) {
             </Link>
 
             <div className="flex shrink-0 items-center gap-2">
-              {substitutionCount > 0 && (
+              {unseenSubstitutionCount > 0 && (
                 <Link
                   href="/substitutions"
                   className="relative inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-[0_8px_18px_rgba(79,70,229,0.25)] active:scale-[0.97]"
@@ -269,7 +278,7 @@ export default function Header({ email }: { email?: string }) {
                 >
                   <Handshake size={20} />
                   <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-400 px-1 text-[10px] font-black text-black shadow-md ring-2 ring-white">
-                    {substitutionCount > 9 ? "9+" : substitutionCount}
+                    {unseenSubstitutionCount > 9 ? "9+" : unseenSubstitutionCount}
                   </span>
                 </Link>
               )}
@@ -309,18 +318,18 @@ export default function Header({ email }: { email?: string }) {
 
                 <div className="min-w-0">
                   <p className="font-black">
-                    {acceptedMySubstitutionCount > 0
+                    {latestSubstitutionType === "accepted"
                       ? "Záskok bol potvrdený"
                       : "Treba zastúpiť tréning"}
                   </p>
                   <p className="truncate text-xs text-white/75">
-                    Otvoriť zastupovanie a prezenčku
+                    Otvoriť zastupovanie a označiť ako prečítané
                   </p>
                 </div>
               </div>
 
               <span className="flex h-7 min-w-7 items-center justify-center rounded-full bg-amber-400 px-2 text-sm font-black text-black">
-                {substitutionCount > 9 ? "9+" : substitutionCount}
+                {unseenSubstitutionCount > 9 ? "9+" : unseenSubstitutionCount}
               </span>
             </Link>
           )}
@@ -374,7 +383,7 @@ export default function Header({ email }: { email?: string }) {
                   (key === "chat" || (key === "more" && !chatIsVisibleInBottom));
 
                 const showSubstitutionBadge =
-                  substitutionCount > 0 &&
+                  unseenSubstitutionCount > 0 &&
                   ((key === "more" && moreIsVisibleInBottom) || key === "substitutions");
 
                 const finalHref = key === "chat" ? latestChatHref : href;
@@ -395,7 +404,7 @@ export default function Header({ email }: { email?: string }) {
 
                     {showSubstitutionBadge && (
                       <span className="absolute left-4 top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-400 px-1 text-[10px] font-black text-black shadow-md ring-2 ring-white">
-                        {substitutionCount > 9 ? "9+" : substitutionCount}
+                        {unseenSubstitutionCount > 9 ? "9+" : unseenSubstitutionCount}
                       </span>
                     )}
 
