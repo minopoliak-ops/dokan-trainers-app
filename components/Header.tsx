@@ -6,6 +6,7 @@ import {
   BarChart3,
   Building2,
   CalendarCheck,
+  Handshake,
   Home,
   LogOut,
   Mail,
@@ -37,12 +38,16 @@ export default function Header({ email }: { email?: string }) {
 
   const [unreadChatCount, setUnreadChatCount] = useState(0);
   const [latestChatHref, setLatestChatHref] = useState("/chat");
+  const [openSubstitutionCount, setOpenSubstitutionCount] = useState(0);
 
   const isAdmin = !!permissions?.can_manage_trainers;
   const notificationsEnabled = permissions?.chat_notifications_enabled !== false;
 
   const showTopChatBanner =
     unreadChatCount > 0 && notificationsEnabled && pathname !== "/chat";
+
+  const showTopSubstitutionBanner =
+    openSubstitutionCount > 0 && pathname !== "/substitutions";
 
   async function logout() {
     const supabase = createClient();
@@ -136,6 +141,27 @@ export default function Header({ email }: { email?: string }) {
     );
   }
 
+  async function loadOpenSubstitutionCount() {
+    if (!permissions?.id) {
+      setOpenSubstitutionCount(0);
+      return;
+    }
+
+    const supabase = createClient();
+
+    const { count, error } = await supabase
+      .from("training_substitution_requests")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "open");
+
+    if (error) {
+      console.error(error.message);
+      return;
+    }
+
+    setOpenSubstitutionCount(count || 0);
+  }
+
   useEffect(() => {
     loadUnreadChatCount();
 
@@ -161,6 +187,31 @@ export default function Header({ email }: { email?: string }) {
     };
   }, [permissions?.id, notificationsEnabled, pathname]);
 
+  useEffect(() => {
+    loadOpenSubstitutionCount();
+
+    if (!permissions?.id) return;
+
+    const supabase = createClient();
+
+    const channel = supabase
+      .channel("trainer-substitution-header")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "training_substitution_requests",
+        },
+        () => loadOpenSubstitutionCount()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [permissions?.id, pathname]);
+
   return (
     <>
       <header className="sticky top-0 z-50 border-b border-black/10 bg-[#f7f2e8]/95 pt-safe backdrop-blur">
@@ -185,14 +236,54 @@ export default function Header({ email }: { email?: string }) {
               </div>
             </Link>
 
-            <button
-              onClick={logout}
-              className="inline-flex shrink-0 items-center gap-2 rounded-2xl bg-black px-4 py-2 text-sm font-semibold text-white active:scale-[0.97]"
-            >
-              <LogOut size={16} />
-              <span className="hidden sm:inline">Odhlásiť</span>
-            </button>
+            <div className="flex shrink-0 items-center gap-2">
+              {openSubstitutionCount > 0 && (
+                <Link
+                  href="/substitutions"
+                  className="relative inline-flex h-10 items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-3 text-sm font-black text-white shadow-[0_8px_18px_rgba(79,70,229,0.25)] active:scale-[0.97]"
+                  title="Treba zastúpiť tréning"
+                >
+                  <Handshake size={17} />
+                  <span className="hidden md:inline">Záskok</span>
+                  <span className="absolute -right-2 -top-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-amber-400 px-1 text-[10px] font-black text-black ring-2 ring-[#f7f2e8]">
+                    {openSubstitutionCount > 9 ? "9+" : openSubstitutionCount}
+                  </span>
+                </Link>
+              )}
+
+              <button
+                onClick={logout}
+                className="inline-flex items-center gap-2 rounded-2xl bg-black px-4 py-2 text-sm font-semibold text-white active:scale-[0.97]"
+              >
+                <LogOut size={16} />
+                <span className="hidden sm:inline">Odhlásiť</span>
+              </button>
+            </div>
           </div>
+
+          {showTopSubstitutionBanner && (
+            <Link
+              href="/substitutions"
+              className="mt-3 flex items-center justify-between gap-3 rounded-2xl bg-indigo-600 px-4 py-3 text-white shadow-[0_8px_20px_rgba(79,70,229,0.25)] active:scale-[0.98]"
+            >
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/20">
+                  <Handshake size={22} />
+                </div>
+
+                <div className="min-w-0">
+                  <p className="font-black">Treba zastúpiť tréning</p>
+                  <p className="truncate text-xs text-white/75">
+                    Otvoriť žiadosti o záskok
+                  </p>
+                </div>
+              </div>
+
+              <span className="flex h-7 min-w-7 items-center justify-center rounded-full bg-amber-400 px-2 text-sm font-black text-black">
+                {openSubstitutionCount > 9 ? "9+" : openSubstitutionCount}
+              </span>
+            </Link>
+          )}
 
           {showTopChatBanner && (
             <Link
@@ -242,6 +333,8 @@ export default function Header({ email }: { email?: string }) {
                   notificationsEnabled &&
                   (key === "chat" || (key === "more" && !chatIsVisibleInBottom));
 
+                const showSubstitutionBadge = openSubstitutionCount > 0 && key === "more";
+
                 const finalHref = key === "chat" ? latestChatHref : href;
 
                 return (
@@ -255,6 +348,12 @@ export default function Header({ email }: { email?: string }) {
                     {showChatBadge && (
                       <span className="absolute right-4 top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#d71920] px-1 text-[10px] font-black text-white shadow-md ring-2 ring-white">
                         {unreadChatCount > 9 ? "9+" : unreadChatCount}
+                      </span>
+                    )}
+
+                    {showSubstitutionBadge && (
+                      <span className="absolute left-4 top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-400 px-1 text-[10px] font-black text-black shadow-md ring-2 ring-white">
+                        {openSubstitutionCount > 9 ? "9+" : openSubstitutionCount}
                       </span>
                     )}
 
