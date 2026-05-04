@@ -6,17 +6,13 @@ import {
   ArrowLeft,
   CalendarCheck,
   Check,
-  CheckCircle2,
-  ChevronDown,
-  Copy,
-  Eye,
-  EyeOff,
-  Filter,
+  ChevronLeft,
+  ChevronRight,
+  Dumbbell,
   Handshake,
-  Plus,
   RefreshCcw,
   Search,
-  Sparkles,
+  ShieldCheck,
   Users,
   X,
   XCircle,
@@ -25,17 +21,6 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 type Status = "present" | "absent" | null;
-type StudentFilter = "all" | "visible" | "hidden";
-
-const weekDays = [
-  { value: 1, label: "Po" },
-  { value: 2, label: "Ut" },
-  { value: 3, label: "St" },
-  { value: 4, label: "Št" },
-  { value: 5, label: "Pi" },
-  { value: 6, label: "So" },
-  { value: 0, label: "Ne" },
-];
 
 const topicColors = [
   "bg-red-50 border-red-100",
@@ -67,6 +52,7 @@ function formatLongDate(date: string) {
     weekday: "short",
     day: "2-digit",
     month: "2-digit",
+    year: "numeric",
   });
 }
 
@@ -104,36 +90,20 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
   const [topics, setTopics] = useState<any[]>([]);
   const [trainings, setTrainings] = useState<any[]>([]);
   const [attendance, setAttendance] = useState<any[]>([]);
-  const [blackouts, setBlackouts] = useState<any[]>([]);
-  const [hiddenStudents, setHiddenStudents] = useState<string[]>([]);
-  const [substitutionDates, setSubstitutionDates] = useState<string[]>([]);
-  const [hasNormalDojoAccess, setHasNormalDojoAccess] = useState(false);
+  const [substitutions, setSubstitutions] = useState<any[]>([]);
+  const [trainerDojoAccess, setTrainerDojoAccess] = useState(false);
 
-  const [allowed, setAllowed] = useState(false);
   const [loading, setLoading] = useState(true);
-
   const [studentSearch, setStudentSearch] = useState("");
-  const [studentFilter, setStudentFilter] = useState<StudentFilter>("visible");
-  const [showSetup, setShowSetup] = useState(false);
   const [selectedMobileTrainingId, setSelectedMobileTrainingId] = useState("");
 
   const isAdmin = !!permissions?.can_manage_trainers;
-  const canWriteAttendance = !!permissions?.can_attendance || isAdmin;
-  const canCreateTrainings = !!permissions?.can_create_trainings || isAdmin;
+  const baseCanWriteAttendance = !!permissions?.can_attendance || isAdmin;
 
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   });
-
-  const [bulkTopicId, setBulkTopicId] = useState("");
-  const [trainingDate, setTrainingDate] = useState("");
-  const [topicId, setTopicId] = useState("");
-  const [title, setTitle] = useState("Tréning");
-
-  const [generateDays, setGenerateDays] = useState<number[]>([2, 4]);
-  const [generateTopicId, setGenerateTopicId] = useState("");
-  const [generateTitle, setGenerateTitle] = useState("Tréning");
 
   const monthStart = `${selectedMonth}-01`;
 
@@ -147,25 +117,41 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
     )}`;
   }, [selectedMonth]);
 
-  const previousMonth = useMemo(() => {
-    const [year, month] = selectedMonth.split("-").map(Number);
-    const d = new Date(year, month - 2, 1);
+  const substitutionDates = useMemo(() => {
+    return substitutions
+      .filter((item) => item.status === "accepted")
+      .map((item) => item.request_date)
+      .filter(Boolean);
+  }, [substitutions]);
 
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-  }, [selectedMonth]);
+  const substitutionByDate = useMemo(() => {
+    const map = new Map<string, any>();
+
+    substitutions
+      .filter((item) => item.status === "accepted")
+      .forEach((item) => {
+        if (item.request_date) map.set(item.request_date, item);
+      });
+
+    return map;
+  }, [substitutions]);
+
+  const substitutedTrainings = useMemo(() => {
+    return trainings.filter((training) =>
+      substitutionDates.includes(training.training_date)
+    );
+  }, [trainings, substitutionDates]);
+
+  const selectedMobileTraining =
+    trainings.find((t) => t.id === selectedMobileTrainingId) || trainings[0];
 
   const filteredStudents = useMemo(() => {
     const q = studentSearch.toLowerCase().trim();
 
-    return students.filter((student) => {
-      const hidden = hiddenStudents.includes(student.id);
+    if (!q) return students;
 
-      if (studentFilter === "visible" && hidden) return false;
-      if (studentFilter === "hidden" && !hidden) return false;
-
-      if (!q) return true;
-
-      return [
+    return students.filter((student) =>
+      [
         student.first_name,
         student.last_name,
         student.technical_grade,
@@ -175,63 +161,67 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
         .filter(Boolean)
         .join(" ")
         .toLowerCase()
-        .includes(q);
-    });
-  }, [students, hiddenStudents, studentSearch, studentFilter]);
-
-  const visibleStudents = filteredStudents.filter(
-    (s) => !hiddenStudents.includes(s.id)
-  );
-
-  const selectedMobileTraining = useMemo(() => {
-    return (
-      trainings.find((training) => training.id === selectedMobileTrainingId) ||
-      trainings[0] ||
-      null
+        .includes(q)
     );
-  }, [trainings, selectedMobileTrainingId]);
-
-  const selectedMobileTrainingIndex = useMemo(() => {
-    if (!selectedMobileTraining) return -1;
-    return trainings.findIndex((training) => training.id === selectedMobileTraining.id);
-  }, [trainings, selectedMobileTraining]);
+  }, [students, studentSearch]);
 
   const monthStats = useMemo(() => {
-    const present = attendance.filter((a) => a.status === "present").length;
-    const absent = attendance.filter((a) => a.status === "absent").length;
-    const totalSlots = students.length * trainings.length;
-    const marked = present + absent;
-    const unmarked = Math.max(totalSlots - marked, 0);
-    const percent = totalSlots > 0 ? Math.round((present / totalSlots) * 100) : 0;
+    const trainingIds = new Set(trainings.map((training) => training.id));
+
+    const relevantAttendance = attendance.filter((item) =>
+      trainingIds.has(item.training_id)
+    );
+
+    const present = relevantAttendance.filter((a) => a.status === "present").length;
+    const absent = relevantAttendance.filter((a) => a.status === "absent").length;
 
     return {
       students: students.length,
       trainings: trainings.length,
       present,
       absent,
-      unmarked,
-      percent,
+      substitutionDays: substitutionDates.length,
     };
-  }, [attendance, students.length, trainings.length]);
+  }, [attendance, students.length, trainings, substitutionDates.length]);
 
-  async function checkAccess(supabase: any) {
-    if (permissionsLoading) return false;
-
-    const isAdminNow = !!permissions?.can_manage_trainers;
-
+  async function loadSubstitutionAccess(supabase: any) {
     if (!permissions?.id) {
-      setHasNormalDojoAccess(false);
-      setSubstitutionDates([]);
-      return false;
+      setSubstitutions([]);
+      return [];
     }
 
-    if (isAdminNow) {
-      setHasNormalDojoAccess(true);
-      setSubstitutionDates([]);
-      return true;
+    const { data, error } = await supabase
+      .from("training_substitution_requests")
+      .select(
+        `
+        *,
+        requester:trainers!training_substitution_requests_requester_id_fkey(full_name,email),
+        trainings(id,title,training_date,training_topics(name))
+      `
+      )
+      .eq("substitute_id", permissions.id)
+      .eq("dojo_id", params.id)
+      .eq("status", "accepted")
+      .gte("request_date", monthStart)
+      .lte("request_date", monthEnd);
+
+    if (error) {
+      console.error(error.message);
+      setSubstitutions([]);
+      return [];
     }
 
-    const { data: link, error } = await supabase
+    setSubstitutions(data || []);
+    return data || [];
+  }
+
+  async function loadTrainerDojoAccess(supabase: any) {
+    if (!permissions?.id || isAdmin) {
+      setTrainerDojoAccess(isAdmin);
+      return isAdmin;
+    }
+
+    const { data, error } = await supabase
       .from("trainer_dojos")
       .select("id")
       .eq("trainer_id", permissions.id)
@@ -239,318 +229,25 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
       .maybeSingle();
 
     if (error) {
-      console.error("Attendance access error:", error);
+      console.error(error.message);
+      setTrainerDojoAccess(false);
+      return false;
     }
 
-    const normalAccess = !!link;
-    setHasNormalDojoAccess(normalAccess);
-
-    const { data: substitutionRows, error: substitutionError } = await supabase
-      .from("training_substitution_requests")
-      .select("request_date")
-      .eq("substitute_id", permissions.id)
-      .eq("dojo_id", params.id)
-      .eq("status", "accepted")
-      .gte("request_date", monthStart)
-      .lte("request_date", monthEnd);
-
-    if (substitutionError) {
-      console.error("Substitution access error:", substitutionError);
-      setSubstitutionDates([]);
-      return normalAccess;
-    }
-
-    const dates = (substitutionRows || []).map((row: any) => row.request_date);
-    setSubstitutionDates(dates);
-
-    return normalAccess || dates.length > 0;
+    const hasAccess = !!data;
+    setTrainerDojoAccess(hasAccess);
+    return hasAccess;
   }
 
-  async function loadData() {
-    if (permissionsLoading) return;
-
-    if (!permissions?.id) {
-      setAllowed(false);
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-
-    const supabase = createClient();
-
-    const hasAccess = await checkAccess(supabase);
-
-    if (!hasAccess) {
-      setAllowed(false);
-      setLoading(false);
-      return;
-    }
-
-    setAllowed(true);
-
-    const dojoResult = await supabase
-      .from("dojos")
-      .select("*")
-      .eq("id", params.id)
-      .maybeSingle();
-
-    if (dojoResult.error) {
-      console.error("Dojo error:", dojoResult.error);
-      setDojo(null);
-      setLoading(false);
-      return;
-    }
-
-    const studentsResult = await supabase
-      .from("students")
-      .select("*")
-      .eq("dojo_id", params.id)
-      .eq("active", true)
-      .order("last_name");
-
-    const topicsResult = await supabase
-      .from("training_topics")
-      .select("*")
-      .eq("active", true)
-      .order("name");
-
-    const trainingsResult = await supabase
-      .from("trainings")
-      .select("*, training_topics(name)")
-      .eq("dojo_id", params.id)
-      .gte("training_date", monthStart)
-      .lte("training_date", monthEnd)
-      .order("training_date");
-
-    const blackoutResult = await supabase
-      .from("training_blackout_dates")
-      .select("*")
-      .gte("date", monthStart)
-      .lte("date", monthEnd);
-
-    const trainingIds = (trainingsResult.data || []).map((t: any) => t.id);
-
-    const attendanceResult =
-      trainingIds.length > 0
-        ? await supabase
-            .from("attendance")
-            .select("*")
-            .in("training_id", trainingIds)
-        : { data: [], error: null };
-
-    if (studentsResult.error) console.error(studentsResult.error);
-    if (topicsResult.error) console.error(topicsResult.error);
-    if (trainingsResult.error) console.error(trainingsResult.error);
-    if (blackoutResult.error) console.error(blackoutResult.error);
-    if (attendanceResult.error) console.error(attendanceResult.error);
-
-    setDojo(dojoResult.data);
-    setStudents(studentsResult.data || []);
-    setTopics(topicsResult.data || []);
-    setTrainings(trainingsResult.data || []);
-    setAttendance(attendanceResult.data || []);
-    setBlackouts(blackoutResult.data || []);
-    setHiddenStudents([]);
-    setLoading(false);
+  function canReadPage() {
+    return isAdmin || trainerDojoAccess || substitutions.length > 0;
   }
 
-  useEffect(() => {
-    loadData();
-  }, [permissions, permissionsLoading, selectedMonth, params.id]);
+  function canWriteTraining(training: any) {
+    if (!baseCanWriteAttendance) return false;
+    if (isAdmin || trainerDojoAccess) return true;
 
-  async function updateTrainingTopic(trainingId: string, newTopicId: string) {
-    if (!canCreateTrainings) return;
-
-    const supabase = createClient();
-
-    const { error } = await supabase
-      .from("trainings")
-      .update({ topic_id: newTopicId || null })
-      .eq("id", trainingId);
-
-    if (error) return alert(error.message);
-
-    setTrainings((prev) =>
-      prev.map((t) =>
-        t.id === trainingId
-          ? {
-              ...t,
-              topic_id: newTopicId || null,
-              training_topics: topics.find((tp) => tp.id === newTopicId) || null,
-            }
-          : t
-      )
-    );
-  }
-
-  async function applyTopicToAllTrainings() {
-    if (!canCreateTrainings) return;
-    if (trainings.length === 0) return alert("V tomto mesiaci nie sú tréningy.");
-
-    const supabase = createClient();
-
-    const { error } = await supabase
-      .from("trainings")
-      .update({ topic_id: bulkTopicId || null })
-      .eq("dojo_id", params.id)
-      .gte("training_date", monthStart)
-      .lte("training_date", monthEnd);
-
-    if (error) return alert(error.message);
-
-    const topic = topics.find((t) => t.id === bulkTopicId) || null;
-
-    setTrainings((prev) =>
-      prev.map((t) => ({
-        ...t,
-        topic_id: bulkTopicId || null,
-        training_topics: topic,
-      }))
-    );
-  }
-
-  async function copyTopicsFromPreviousMonth() {
-    if (!canCreateTrainings) return;
-
-    const supabase = createClient();
-
-    const [year, month] = previousMonth.split("-").map(Number);
-    const prevLastDay = new Date(year, month, 0).getDate();
-    const prevStart = `${previousMonth}-01`;
-    const prevEnd = `${previousMonth}-${String(prevLastDay).padStart(2, "0")}`;
-
-    const { data: previousTrainings, error } = await supabase
-      .from("trainings")
-      .select("training_date, topic_id, training_topics(name)")
-      .eq("dojo_id", params.id)
-      .gte("training_date", prevStart)
-      .lte("training_date", prevEnd)
-      .order("training_date");
-
-    if (error) return alert(error.message);
-    if (!previousTrainings || previousTrainings.length === 0) {
-      return alert("V minulom mesiaci nie sú tréningy s témami.");
-    }
-
-    const updates = trainings
-      .map((training, index) => {
-        const previous = previousTrainings[index];
-        if (!previous) return null;
-
-        return {
-          id: training.id,
-          topic_id: previous.topic_id || null,
-        };
-      })
-      .filter(Boolean) as any[];
-
-    for (const update of updates) {
-      await supabase
-        .from("trainings")
-        .update({ topic_id: update.topic_id })
-        .eq("id", update.id);
-    }
-
-    setTrainings((prev) =>
-      prev.map((training, index) => {
-        const previous = previousTrainings[index];
-        const topic = topics.find((t) => t.id === previous?.topic_id) || null;
-
-        return previous
-          ? {
-              ...training,
-              topic_id: previous.topic_id || null,
-              training_topics: topic,
-            }
-          : training;
-      })
-    );
-
-    alert("Témy z minulého mesiaca boli skopírované.");
-  }
-
-  async function addTraining() {
-    if (!canCreateTrainings) return alert("Nemáš oprávnenie vytvárať tréningy.");
-    if (!trainingDate) return alert("Vyber dátum tréningu.");
-
-    const supabase = createClient();
-
-    const { error } = await supabase.from("trainings").upsert(
-      {
-        dojo_id: params.id,
-        training_date: trainingDate,
-        title: title || "Tréning",
-        topic_id: topicId || null,
-      },
-      { onConflict: "dojo_id,training_date" }
-    );
-
-    if (error) return alert(error.message);
-
-    setTrainingDate("");
-    setTopicId("");
-    setTitle("Tréning");
-    loadData();
-  }
-
-  async function generateTrainings() {
-    if (!canCreateTrainings) return alert("Nemáš oprávnenie vytvárať tréningy.");
-    if (generateDays.length === 0) return alert("Vyber aspoň jeden deň v týždni.");
-
-    const [year, month] = selectedMonth.split("-").map(Number);
-    const lastDay = new Date(year, month, 0).getDate();
-    const blackoutMap = new Map(blackouts.map((b) => [b.date, b.reason]));
-
-    const rows: any[] = [];
-    const skipped: string[] = [];
-
-    for (let day = 1; day <= lastDay; day++) {
-      const date = new Date(year, month - 1, day);
-      const weekday = date.getDay();
-
-      if (!generateDays.includes(weekday)) continue;
-
-      const dateString = `${year}-${String(month).padStart(2, "0")}-${String(
-        day
-      ).padStart(2, "0")}`;
-
-      if (blackoutMap.has(dateString)) {
-        skipped.push(`${dateString} - ${blackoutMap.get(dateString)}`);
-        continue;
-      }
-
-      rows.push({
-        dojo_id: params.id,
-        training_date: dateString,
-        title: generateTitle || "Tréning",
-        topic_id: generateTopicId || null,
-      });
-    }
-
-    if (rows.length === 0) {
-      return alert("Nenašli sa žiadne tréningové dátumy v tomto mesiaci.");
-    }
-
-    const supabase = createClient();
-
-    const { error } = await supabase.from("trainings").upsert(rows, {
-      onConflict: "dojo_id,training_date",
-    });
-
-    if (error) return alert(error.message);
-
-    let message = `Vygenerované tréningy: ${rows.length}`;
-    if (skipped.length > 0) message += `\n\nPreskočené dni:\n${skipped.join("\n")}`;
-
-    alert(message);
-    loadData();
-  }
-
-  function toggleGenerateDay(day: number) {
-    setGenerateDays((current) =>
-      current.includes(day) ? current.filter((d) => d !== day) : [...current, day]
-    );
+    return substitutionDates.includes(training.training_date);
   }
 
   function getAttendance(trainingId: string, studentId: string): Status {
@@ -561,28 +258,141 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
     );
   }
 
+  async function loadData() {
+    if (permissionsLoading) return;
 
-  function canWriteForTraining(training: any) {
-    if (!training) return false;
-    if (isAdmin) return true;
-    if (hasNormalDojoAccess) return canWriteAttendance;
-    return substitutionDates.includes(training.training_date);
+    if (!permissions?.id) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+
+    const supabase = createClient();
+
+    const [normalAccess, substitutionRows] = await Promise.all([
+      loadTrainerDojoAccess(supabase),
+      loadSubstitutionAccess(supabase),
+    ]);
+
+    const hasAnyAccess = isAdmin || normalAccess || substitutionRows.length > 0;
+
+    if (!hasAnyAccess) {
+      setDojo(null);
+      setStudents([]);
+      setTopics([]);
+      setTrainings([]);
+      setAttendance([]);
+      setLoading(false);
+      return;
+    }
+
+    const { data: dojoData } = await supabase
+      .from("dojos")
+      .select("*")
+      .eq("id", params.id)
+      .maybeSingle();
+
+    const { data: studentsData } = await supabase
+      .from("students")
+      .select("*")
+      .eq("dojo_id", params.id)
+      .eq("active", true)
+      .order("last_name");
+
+    const { data: topicsData } = await supabase
+      .from("training_topics")
+      .select("*")
+      .eq("active", true)
+      .order("name");
+
+    const { data: trainingsData } = await supabase
+      .from("trainings")
+      .select("*, training_topics(name)")
+      .eq("dojo_id", params.id)
+      .gte("training_date", monthStart)
+      .lte("training_date", monthEnd)
+      .order("training_date", { ascending: true });
+
+    const trainingIds = (trainingsData || []).map((training: any) => training.id);
+
+    const attendanceResult =
+      trainingIds.length > 0
+        ? await supabase
+            .from("attendance")
+            .select("*")
+            .in("training_id", trainingIds)
+        : { data: [] };
+
+    setDojo(dojoData);
+    setStudents(studentsData || []);
+    setTopics(topicsData || []);
+    setTrainings(trainingsData || []);
+    setAttendance(attendanceResult.data || []);
+
+    if (!selectedMobileTrainingId && (trainingsData || []).length > 0) {
+      setSelectedMobileTrainingId(trainingsData![0].id);
+    }
+
+    setLoading(false);
   }
+
+  useEffect(() => {
+    loadData();
+
+    const supabase = createClient();
+
+    const attendanceChannel = supabase
+      .channel(`attendance-live-${params.id}-${selectedMonth}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "attendance",
+        },
+        () => loadData()
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "training_substitution_requests",
+        },
+        () => loadData()
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "trainings",
+        },
+        () => loadData()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(attendanceChannel);
+    };
+  }, [permissions?.id, permissionsLoading, selectedMonth, params.id]);
 
   async function setAttendanceStatus(
     trainingId: string,
     studentId: string,
-    next: Status
+    nextStatus: Status
   ) {
     const training = trainings.find((item) => item.id === trainingId);
 
-    if (!canWriteForTraining(training)) {
-      return alert("Nemáš oprávnenie zapisovať prezenčku pre tento deň.");
+    if (!training || !canWriteTraining(training)) {
+      alert("Nemáš oprávnenie zapisovať prezenčku pre tento deň.");
+      return;
     }
 
     const supabase = createClient();
 
-    if (next === null) {
+    if (nextStatus === null) {
       const { error } = await supabase
         .from("attendance")
         .delete()
@@ -590,67 +400,69 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
         .eq("student_id", studentId);
 
       if (error) return alert(error.message);
-    } else {
-      const { error } = await supabase.from("attendance").upsert(
-        { training_id: trainingId, student_id: studentId, status: next },
-        { onConflict: "training_id,student_id" }
+
+      setAttendance((prev) =>
+        prev.filter(
+          (item) =>
+            !(item.training_id === trainingId && item.student_id === studentId)
+        )
       );
 
-      if (error) return alert(error.message);
+      return;
     }
 
-    setAttendance((prev) => {
-      const filtered = prev.filter(
-        (a) => !(a.training_id === trainingId && a.student_id === studentId)
-      );
-
-      if (next === null) return filtered;
-
-      return [
-        ...filtered,
-        { training_id: trainingId, student_id: studentId, status: next },
-      ];
-    });
-  }
-
-  async function cycleAttendance(trainingId: string, studentId: string) {
-    const current = getAttendance(trainingId, studentId);
-
-    let next: Status = null;
-    if (!current) next = "present";
-    else if (current === "present") next = "absent";
-    else next = null;
-
-    setAttendanceStatus(trainingId, studentId, next);
-  }
-
-  async function markAll(trainingId: string, status: "present" | "absent") {
-    const training = trainings.find((item) => item.id === trainingId);
-
-    if (!canWriteForTraining(training)) {
-      return alert("Nemáš oprávnenie zapisovať prezenčku pre tento deň.");
-    }
-
-    const supabase = createClient();
-
-    const rows = visibleStudents.map((s) => ({
+    const row = {
       training_id: trainingId,
-      student_id: s.id,
-      status,
-    }));
+      student_id: studentId,
+      status: nextStatus,
+    };
 
-    const { error } = await supabase.from("attendance").upsert(rows, {
-      onConflict: "training_id,student_id",
-    });
+    const { error } = await supabase
+      .from("attendance")
+      .upsert(row, { onConflict: "training_id,student_id" });
 
     if (error) return alert(error.message);
 
     setAttendance((prev) => {
       const filtered = prev.filter(
-        (a) =>
+        (item) =>
+          !(item.training_id === trainingId && item.student_id === studentId)
+      );
+
+      return [...filtered, row];
+    });
+  }
+
+  async function markAll(trainingId: string, status: "present" | "absent") {
+    const training = trainings.find((item) => item.id === trainingId);
+
+    if (!training || !canWriteTraining(training)) {
+      alert("Nemáš oprávnenie zapisovať prezenčku pre tento deň.");
+      return;
+    }
+
+    const rows = filteredStudents.map((student) => ({
+      training_id: trainingId,
+      student_id: student.id,
+      status,
+    }));
+
+    if (rows.length === 0) return;
+
+    const supabase = createClient();
+
+    const { error } = await supabase
+      .from("attendance")
+      .upsert(rows, { onConflict: "training_id,student_id" });
+
+    if (error) return alert(error.message);
+
+    setAttendance((prev) => {
+      const filtered = prev.filter(
+        (item) =>
           !(
-            a.training_id === trainingId &&
-            visibleStudents.some((s) => s.id === a.student_id)
+            item.training_id === trainingId &&
+            filteredStudents.some((student) => student.id === item.student_id)
           )
       );
 
@@ -661,8 +473,9 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
   async function clearTraining(trainingId: string) {
     const training = trainings.find((item) => item.id === trainingId);
 
-    if (!canWriteForTraining(training)) {
-      return alert("Nemáš oprávnenie zapisovať prezenčku pre tento deň.");
+    if (!training || !canWriteTraining(training)) {
+      alert("Nemáš oprávnenie zapisovať prezenčku pre tento deň.");
+      return;
     }
 
     if (!confirm("Vymazať označenia pre tento tréning?")) return;
@@ -676,33 +489,41 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
 
     if (error) return alert(error.message);
 
-    setAttendance((prev) => prev.filter((a) => a.training_id !== trainingId));
+    setAttendance((prev) =>
+      prev.filter((item) => item.training_id !== trainingId)
+    );
   }
 
   if (permissionsLoading || loading) {
     return (
       <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40">
-        <div className="rounded-3xl bg-white p-6 shadow-sm">
+        <div className="rounded-3xl bg-white p-6 font-bold shadow-sm">
           Načítavam prezenčku...
         </div>
       </div>
     );
   }
 
-  if (!allowed) {
+  if (!dojo || !canReadPage()) {
     return (
-      <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40">
+      <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40 space-y-4">
         <div className="rounded-3xl bg-white p-6 text-center shadow-sm">
-          Nemáš oprávnenie vidieť túto prezenčku.
+          <ShieldCheck className="mx-auto mb-3 text-black/35" size={34} />
+          <h1 className="text-2xl font-black">
+            Dojo sa nenašlo alebo nemáš prístup k tejto prezenčke.
+          </h1>
+          <p className="mt-2 text-sm font-semibold text-black/55">
+            Ak máš potvrdený záskok, prístup sa otvorí iba pre konkrétny deň a dojo.
+          </p>
         </div>
-      </div>
-    );
-  }
 
-  if (!dojo) {
-    return (
-      <div className="min-h-screen bg-[#f7f2e8] px-5 py-6 pb-40">
-        Dojo sa nenašlo.
+        <Link
+          href="/dojos"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#d71920] px-4 py-4 font-black text-white"
+        >
+          <ArrowLeft size={18} />
+          Späť na dojo
+        </Link>
       </div>
     );
   }
@@ -724,10 +545,10 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
           </h1>
 
           <p className="mt-2 max-w-2xl text-white/65">
-            {dojo.address || "Bez adresy"}
+            {dojo.address || "Bez adresy"} · {formatMonthLabel(selectedMonth)}
           </p>
 
-          <div className="mt-6 grid gap-3 md:grid-cols-4">
+          <div className="mt-6 grid gap-3 md:grid-cols-5">
             <div className="rounded-2xl bg-white/10 p-4">
               <p className="text-sm text-white/50">Žiaci</p>
               <p className="text-3xl font-black">{monthStats.students}</p>
@@ -739,240 +560,97 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
             </div>
 
             <div className="rounded-2xl bg-white/10 p-4">
-              <p className="text-sm text-white/50">Prítomnosti</p>
+              <p className="text-sm text-white/50">Prítomní</p>
               <p className="text-3xl font-black text-green-300">
                 {monthStats.present}
               </p>
             </div>
 
             <div className="rounded-2xl bg-white/10 p-4">
-              <p className="text-sm text-white/50">Účasť</p>
-              <p className="text-3xl font-black">{monthStats.percent}%</p>
+              <p className="text-sm text-white/50">Neprítomní</p>
+              <p className="text-3xl font-black text-red-300">
+                {monthStats.absent}
+              </p>
+            </div>
+
+            <div
+              className={`rounded-2xl p-4 ${
+                monthStats.substitutionDays > 0
+                  ? "bg-indigo-600"
+                  : "bg-white/10"
+              }`}
+            >
+              <p className="text-sm text-white/50">Záskok dni</p>
+              <p className="text-3xl font-black text-amber-300">
+                {monthStats.substitutionDays}
+              </p>
             </div>
           </div>
         </div>
       </div>
 
-      {substitutionDates.length > 0 && !hasNormalDojoAccess && !isAdmin && (
-        <div className="rounded-[30px] bg-indigo-600 p-5 text-white shadow-[0_12px_28px_rgba(79,70,229,0.25)]">
+      {substitutions.length > 0 && !trainerDojoAccess && !isAdmin && (
+        <div className="rounded-[30px] bg-indigo-600 p-5 text-white shadow-[0_14px_30px_rgba(79,70,229,0.28)]">
           <div className="flex items-start gap-3">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/15">
               <Handshake size={24} />
             </div>
+
             <div className="min-w-0">
-              <h2 className="text-2xl font-black">Zastupovanie aktívne</h2>
+              <p className="text-sm font-black uppercase tracking-[0.14em] text-white/65">
+                Zastupovanie aktívne
+              </p>
+
+              <h2 className="mt-1 text-2xl font-black">
+                Prezenčka odomknutá len na potvrdené dni
+              </h2>
+
               <p className="mt-1 font-semibold text-white/80">
-                Pre tieto dni máš odomknutú prezenčku: {substitutionDates.map((date) => new Date(date).toLocaleDateString("sk-SK")).join(", ")}
+                Dni:{" "}
+                {substitutionDates
+                  .map((date) => new Date(date).toLocaleDateString("sk-SK"))
+                  .join(", ")}
+              </p>
+
+              <p className="mt-2 text-sm font-semibold text-white/70">
+                Nasledujúci deň sa prístup k cudziemu dojo automaticky stratí.
               </p>
             </div>
           </div>
         </div>
       )}
 
-      <div className="grid gap-3 md:grid-cols-[1fr_auto_auto]">
-        <div className="overflow-hidden rounded-[26px] bg-white p-4 shadow-sm ring-1 ring-black/10">
-          <label className="mb-2 block text-sm font-black text-black/55">
-            Mesiac
-          </label>
+      <div className="grid gap-3 md:grid-cols-[auto_1fr_auto]">
+        <button
+          type="button"
+          onClick={() => setSelectedMonth(previousMonthValue(selectedMonth))}
+          className="inline-flex h-[56px] items-center justify-center gap-2 rounded-[24px] bg-white px-4 font-black shadow-sm ring-1 ring-black/10 active:scale-[0.98]"
+        >
+          <ChevronLeft size={18} />
+          Predošlý
+        </button>
 
-          <div className="grid grid-cols-[48px_1fr_48px] items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setSelectedMonth(previousMonthValue(selectedMonth))}
-              className="flex h-[52px] items-center justify-center rounded-2xl bg-[#f7f2e8] text-xl font-black active:scale-[0.98]"
-              aria-label="Predchádzajúci mesiac"
-            >
-              ‹
-            </button>
-
-            <div className="relative min-w-0 overflow-hidden rounded-2xl bg-[#f7f2e8]">
-              <div className="pointer-events-none flex h-[52px] w-full items-center justify-center px-3 text-center text-base font-black capitalize text-[#111]">
-                {formatMonthLabel(selectedMonth)}
-              </div>
-              <input
-                type="month"
-                value={selectedMonth}
-                onChange={(e) => setSelectedMonth(e.target.value)}
-                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                aria-label="Vyber mesiac"
-              />
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setSelectedMonth(nextMonthValue(selectedMonth))}
-              className="flex h-[52px] items-center justify-center rounded-2xl bg-[#f7f2e8] text-xl font-black active:scale-[0.98]"
-              aria-label="Nasledujúci mesiac"
-            >
-              ›
-            </button>
-          </div>
+        <div className="rounded-[24px] bg-white p-3 shadow-sm ring-1 ring-black/10">
+          <input
+            type="month"
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(e.target.value)}
+            className="h-[48px] w-full rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 text-center text-base font-black outline-none focus:border-[#d71920] focus:bg-white"
+          />
         </div>
 
         <button
           type="button"
-          onClick={loadData}
-          className="inline-flex items-center justify-center gap-2 rounded-[26px] bg-white px-5 py-4 font-black shadow-sm ring-1 ring-black/10 active:scale-[0.98]"
+          onClick={() => setSelectedMonth(nextMonthValue(selectedMonth))}
+          className="inline-flex h-[56px] items-center justify-center gap-2 rounded-[24px] bg-white px-4 font-black shadow-sm ring-1 ring-black/10 active:scale-[0.98]"
         >
-          <RefreshCcw size={18} />
-          Obnoviť
+          Ďalší
+          <ChevronRight size={18} />
         </button>
-
-        {canCreateTrainings && (
-          <button
-            type="button"
-            onClick={() => setShowSetup((v) => !v)}
-            className="inline-flex items-center justify-center gap-2 rounded-[26px] bg-[#d71920] px-5 py-4 font-black text-white shadow-[0_8px_18px_rgba(215,25,32,0.25)] active:scale-[0.98]"
-          >
-            <Sparkles size={18} />
-            {showSetup ? "Skryť nastavenia" : "Nastavenia tréningov"}
-            <ChevronDown
-              size={18}
-              className={`transition ${showSetup ? "rotate-180" : ""}`}
-            />
-          </button>
-        )}
       </div>
 
-      {canCreateTrainings && showSetup && (
-        <div className="grid gap-5">
-          <div className="rounded-[30px] bg-white p-5 shadow-sm ring-1 ring-black/10">
-            <h2 className="mb-4 text-2xl font-black">Rýchle témy mesiaca</h2>
-
-            <div className="grid gap-3 md:grid-cols-3">
-              <select
-                value={bulkTopicId}
-                onChange={(e) => setBulkTopicId(e.target.value)}
-                className="h-[52px] min-w-0 rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 font-bold"
-              >
-                <option value="">Bez témy</option>
-                {topics.map((topic) => (
-                  <option key={topic.id} value={topic.id}>
-                    {topic.name}
-                  </option>
-                ))}
-              </select>
-
-              <button
-                type="button"
-                onClick={applyTopicToAllTrainings}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#111] px-4 py-3 font-bold text-white active:scale-[0.98]"
-              >
-                <CheckCircle2 size={18} />
-                Použiť pre všetky
-              </button>
-
-              <button
-                type="button"
-                onClick={copyTopicsFromPreviousMonth}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#d71920] px-4 py-3 font-bold text-white active:scale-[0.98]"
-              >
-                <Copy size={18} />
-                Kopírovať z minulého mesiaca
-              </button>
-            </div>
-          </div>
-
-          <div className="rounded-[30px] bg-white p-5 shadow-sm ring-1 ring-black/10">
-            <h2 className="mb-4 text-2xl font-black">
-              Automaticky vygenerovať tréningy
-            </h2>
-
-            <div className="mb-4 flex flex-wrap gap-2">
-              {weekDays.map((day) => (
-                <button
-                  type="button"
-                  key={day.value}
-                  onClick={() => toggleGenerateDay(day.value)}
-                  className={`rounded-2xl px-4 py-3 font-black active:scale-[0.98] ${
-                    generateDays.includes(day.value)
-                      ? "bg-[#d71920] text-white"
-                      : "bg-black/10 text-black"
-                  }`}
-                >
-                  {day.label}
-                </button>
-              ))}
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-3">
-              <input
-                value={generateTitle}
-                onChange={(e) => setGenerateTitle(e.target.value)}
-                placeholder="Názov tréningu"
-                className="h-[52px] min-w-0 rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 font-bold"
-              />
-
-              <select
-                value={generateTopicId}
-                onChange={(e) => setGenerateTopicId(e.target.value)}
-                className="h-[52px] min-w-0 rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 font-bold"
-              >
-                <option value="">Bez témy</option>
-                {topics.map((topic) => (
-                  <option key={topic.id} value={topic.id}>
-                    {topic.name}
-                  </option>
-                ))}
-              </select>
-
-              <button
-                type="button"
-                onClick={generateTrainings}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#d71920] px-4 py-3 font-bold text-white active:scale-[0.98]"
-              >
-                <Sparkles size={18} />
-                Vygenerovať mesiac
-              </button>
-            </div>
-          </div>
-
-          <div className="rounded-[30px] bg-white p-5 shadow-sm ring-1 ring-black/10">
-            <h2 className="mb-4 text-2xl font-black">Pridať jeden tréning</h2>
-
-            <div className="grid gap-3 md:grid-cols-4">
-              <input
-                type="date"
-                value={trainingDate}
-                onChange={(e) => setTrainingDate(e.target.value)}
-                className="h-[52px] min-w-0 rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 font-bold"
-              />
-
-              <input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Názov tréningu"
-                className="h-[52px] min-w-0 rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 font-bold"
-              />
-
-              <select
-                value={topicId}
-                onChange={(e) => setTopicId(e.target.value)}
-                className="h-[52px] min-w-0 rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 font-bold"
-              >
-                <option value="">Bez témy</option>
-                {topics.map((topic) => (
-                  <option key={topic.id} value={topic.id}>
-                    {topic.name}
-                  </option>
-                ))}
-              </select>
-
-              <button
-                type="button"
-                onClick={addTraining}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#d71920] px-4 py-3 font-bold text-white active:scale-[0.98]"
-              >
-                <Plus size={18} />
-                Pridať tréning
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <div className="rounded-[30px] bg-white p-5 shadow-sm ring-1 ring-black/10">
-        <div className="mb-4 grid gap-3 md:grid-cols-[1fr_auto_auto]">
+        <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="text-sm font-bold uppercase tracking-[0.14em] text-black/35">
               Prezenčka
@@ -980,250 +658,183 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
             <h2 className="text-2xl font-black">Mesačný prehľad</h2>
           </div>
 
-          <div className="relative">
-            <Search
-              size={18}
-              className="absolute left-4 top-1/2 -translate-y-1/2 text-black/35"
-            />
-            <input
-              value={studentSearch}
-              onChange={(e) => setStudentSearch(e.target.value)}
-              placeholder="Hľadať žiaka..."
-              className="h-[52px] w-full rounded-2xl border border-black/10 bg-[#f7f2e8] pl-11 pr-4 font-bold outline-none md:w-[260px]"
-            />
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => setStudentFilter("visible")}
-              className={`rounded-2xl px-4 py-3 font-black ${
-                studentFilter === "visible"
-                  ? "bg-[#111] text-white"
-                  : "bg-black/10 text-black"
-              }`}
-            >
-              <Eye size={18} />
-            </button>
+          <div className="flex flex-col gap-2 md:flex-row">
+            <div className="relative">
+              <Search
+                size={18}
+                className="absolute left-4 top-1/2 -translate-y-1/2 text-black/35"
+              />
+              <input
+                value={studentSearch}
+                onChange={(e) => setStudentSearch(e.target.value)}
+                placeholder="Hľadať žiaka..."
+                className="h-[52px] w-full rounded-2xl border border-black/10 bg-[#f7f2e8] pl-11 pr-4 font-bold outline-none md:w-[260px]"
+              />
+            </div>
 
             <button
               type="button"
-              onClick={() => setStudentFilter("hidden")}
-              className={`rounded-2xl px-4 py-3 font-black ${
-                studentFilter === "hidden"
-                  ? "bg-[#111] text-white"
-                  : "bg-black/10 text-black"
-              }`}
+              onClick={loadData}
+              className="inline-flex h-[52px] items-center justify-center gap-2 rounded-2xl bg-black/10 px-4 font-black text-black active:scale-[0.98]"
             >
-              <EyeOff size={18} />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setStudentFilter("all")}
-              className={`rounded-2xl px-4 py-3 font-black ${
-                studentFilter === "all"
-                  ? "bg-[#111] text-white"
-                  : "bg-black/10 text-black"
-              }`}
-            >
-              <Filter size={18} />
+              <RefreshCcw size={18} />
+              Obnoviť
             </button>
           </div>
         </div>
 
-        {hiddenStudents.length > 0 && (
-          <button
-            type="button"
-            onClick={() => setHiddenStudents([])}
-            className="mb-4 inline-flex items-center gap-2 rounded-2xl bg-[#111] px-4 py-3 text-sm font-bold text-white active:scale-[0.98]"
-          >
-            <Eye size={18} />
-            Zobraziť všetkých späť
-          </button>
-        )}
-
         {trainings.length === 0 ? (
-          <p className="rounded-2xl bg-[#f7f2e8] p-6 text-center">
+          <p className="rounded-2xl bg-[#f7f2e8] p-6 text-center font-semibold text-black/55">
             V tomto mesiaci ešte nie sú zadané tréningy.
           </p>
         ) : filteredStudents.length === 0 ? (
-          <p className="rounded-2xl bg-[#f7f2e8] p-6 text-center">
+          <p className="rounded-2xl bg-[#f7f2e8] p-6 text-center font-semibold text-black/55">
             Nenašli sa žiadni žiaci pre tento filter.
           </p>
         ) : (
-          <div className="grid gap-3 md:hidden">
-            <div className="overflow-hidden rounded-[26px] bg-[#f7f2e8] p-3 ring-1 ring-black/5">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-xs font-black uppercase tracking-[0.14em] text-black/35">
-                    Vybraný tréning
-                  </p>
-                  <h3 className="truncate text-xl font-black">
-                    {selectedMobileTraining
-                      ? `${formatDate(selectedMobileTraining.training_date)} · ${selectedMobileTraining.training_topics?.name || "Bez témy"}`
-                      : "Bez tréningu"}
-                  </h3>
-                </div>
-
-                <span className="shrink-0 rounded-2xl bg-white px-3 py-2 text-xs font-black text-black/55">
-                  {filteredStudents.length} žiakov
-                </span>
-              </div>
+          <>
+            <div className="block md:hidden">
+              <select
+                value={selectedMobileTraining?.id || ""}
+                onChange={(e) => setSelectedMobileTrainingId(e.target.value)}
+                className="mb-4 h-[56px] w-full rounded-2xl border border-black/10 bg-[#f7f2e8] px-4 font-black"
+              >
+                {trainings.map((training) => (
+                  <option key={training.id} value={training.id}>
+                    {formatLongDate(training.training_date)} ·{" "}
+                    {training.training_topics?.name || training.title || "Bez témy"}
+                  </option>
+                ))}
+              </select>
 
               {selectedMobileTraining && (
-                <div className={`rounded-3xl border p-3 ${topicColor(selectedMobileTraining.topic_id)}`}>
-                  <div className="mb-3 grid grid-cols-[46px_1fr_46px] items-center gap-2">
+                <div
+                  className={`mb-4 rounded-3xl border p-4 ring-1 ring-black/5 ${topicColor(
+                    selectedMobileTraining.topic_id
+                  )}`}
+                >
+                  <p className="text-sm font-black uppercase tracking-[0.14em] text-black/35">
+                    Vybraný tréning
+                  </p>
+
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <h3 className="text-2xl font-black">
+                      {formatLongDate(selectedMobileTraining.training_date)}
+                    </h3>
+
+                    {substitutionDates.includes(
+                      selectedMobileTraining.training_date
+                    ) && (
+                      <span className="rounded-full bg-indigo-600 px-3 py-1 text-xs font-black text-white">
+                        Záskok
+                      </span>
+                    )}
+                  </div>
+
+                  <p className="mt-1 text-sm font-semibold text-black/55">
+                    {selectedMobileTraining.training_topics?.name ||
+                      selectedMobileTraining.title ||
+                      "Bez témy"}
+                  </p>
+
+                  {substitutionByDate.get(selectedMobileTraining.training_date)
+                    ?.topics_note && (
+                    <div className="mt-3 rounded-2xl bg-white p-3">
+                      <p className="mb-1 flex items-center gap-2 text-xs font-black uppercase tracking-[0.12em] text-black/40">
+                        <Dumbbell size={14} />
+                        Témy od trénera
+                      </p>
+                      <p className="whitespace-pre-wrap text-sm font-semibold text-black/70">
+                        {
+                          substitutionByDate.get(
+                            selectedMobileTraining.training_date
+                          )?.topics_note
+                        }
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="mt-4 grid grid-cols-3 gap-2">
                     <button
                       type="button"
-                      disabled={selectedMobileTrainingIndex <= 0}
-                      onClick={() => {
-                        const previous = trainings[selectedMobileTrainingIndex - 1];
-                        if (previous) setSelectedMobileTrainingId(previous.id);
-                      }}
-                      className="flex h-12 items-center justify-center rounded-2xl bg-white text-2xl font-black disabled:opacity-35 active:scale-[0.98]"
-                      aria-label="Predchádzajúci tréning"
+                      onClick={() => markAll(selectedMobileTraining.id, "present")}
+                      disabled={!canWriteTraining(selectedMobileTraining)}
+                      className="rounded-2xl bg-green-600 px-3 py-3 font-black text-white disabled:opacity-35"
                     >
-                      ‹
+                      Všetci ✓
                     </button>
 
-                    <select
-                      value={selectedMobileTraining.id}
-                      onChange={(e) => setSelectedMobileTrainingId(e.target.value)}
-                      className="h-12 w-full min-w-0 rounded-2xl border border-black/10 bg-white px-3 text-center text-base font-black outline-none"
+                    <button
+                      type="button"
+                      onClick={() => markAll(selectedMobileTraining.id, "absent")}
+                      disabled={!canWriteTraining(selectedMobileTraining)}
+                      className="rounded-2xl bg-red-600 px-3 py-3 font-black text-white disabled:opacity-35"
                     >
-                      {trainings.map((training) => (
-                        <option key={training.id} value={training.id}>
-                          {formatDate(training.training_date)} · {training.training_topics?.name || "Bez témy"}
-                        </option>
-                      ))}
-                    </select>
+                      Všetci ✕
+                    </button>
 
                     <button
                       type="button"
-                      disabled={selectedMobileTrainingIndex < 0 || selectedMobileTrainingIndex >= trainings.length - 1}
-                      onClick={() => {
-                        const next = trainings[selectedMobileTrainingIndex + 1];
-                        if (next) setSelectedMobileTrainingId(next.id);
-                      }}
-                      className="flex h-12 items-center justify-center rounded-2xl bg-white text-2xl font-black disabled:opacity-35 active:scale-[0.98]"
-                      aria-label="Nasledujúci tréning"
+                      onClick={() => clearTraining(selectedMobileTraining.id)}
+                      disabled={!canWriteTraining(selectedMobileTraining)}
+                      className="rounded-2xl bg-black/10 px-3 py-3 font-black text-black disabled:opacity-35"
                     >
-                      ›
+                      Reset
                     </button>
                   </div>
 
-                  <div className="mb-3 grid grid-cols-3 gap-2 text-center">
-                    <div className="rounded-2xl bg-white/80 p-3">
-                      <p className="text-xs font-black text-black/45">Dátum</p>
-                      <p className="text-lg font-black">{formatDate(selectedMobileTraining.training_date)}</p>
-                    </div>
-                    <div className="rounded-2xl bg-white/80 p-3">
-                      <p className="text-xs font-black text-black/45">Prítomní</p>
-                      <p className="text-lg font-black text-green-700">
-                        {attendance.filter((item) => item.training_id === selectedMobileTraining.id && item.status === "present").length}
-                      </p>
-                    </div>
-                    <div className="rounded-2xl bg-white/80 p-3">
-                      <p className="text-xs font-black text-black/45">Neprítomní</p>
-                      <p className="text-lg font-black text-red-700">
-                        {attendance.filter((item) => item.training_id === selectedMobileTraining.id && item.status === "absent").length}
-                      </p>
-                    </div>
-                  </div>
-
-                  {substitutionDates.includes(selectedMobileTraining.training_date) && !hasNormalDojoAccess && !isAdmin && (
-                    <p className="mb-3 rounded-2xl bg-indigo-600 px-3 py-2 text-center text-sm font-black text-white">
-                      Záskok - prezenčka odomknutá
+                  {!canWriteTraining(selectedMobileTraining) && (
+                    <p className="mt-3 rounded-2xl bg-white p-3 text-sm font-bold text-black/55">
+                      Tento deň nemáš odomknutý na zápis.
                     </p>
-                  )}
-
-                  {canCreateTrainings && (
-                    <select
-                      value={selectedMobileTraining.topic_id || ""}
-                      onChange={(e) =>
-                        updateTrainingTopic(selectedMobileTraining.id, e.target.value)
-                      }
-                      className="mb-3 h-[46px] w-full rounded-2xl border border-black/10 bg-white px-3 text-sm font-bold"
-                    >
-                      <option value="">Bez témy</option>
-                      {topics.map((topic) => (
-                        <option key={topic.id} value={topic.id}>
-                          {topic.name}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-
-                  {selectedMobileTraining && canWriteForTraining(selectedMobileTraining) && (
-                    <div className="grid grid-cols-3 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => markAll(selectedMobileTraining.id, "present")}
-                        className="inline-flex h-12 items-center justify-center gap-1 rounded-2xl bg-green-600 px-2 text-sm font-black text-white active:scale-[0.98]"
-                      >
-                        <Check size={18} /> Všetci
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => markAll(selectedMobileTraining.id, "absent")}
-                        className="inline-flex h-12 items-center justify-center gap-1 rounded-2xl bg-red-600 px-2 text-sm font-black text-white active:scale-[0.98]"
-                      >
-                        <X size={18} /> Všetci
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => clearTraining(selectedMobileTraining.id)}
-                        className="inline-flex h-12 items-center justify-center gap-1 rounded-2xl bg-[#111] px-2 text-sm font-black text-white active:scale-[0.98]"
-                      >
-                        <RefreshCcw size={17} /> Reset
-                      </button>
-                    </div>
                   )}
                 </div>
               )}
-            </div>
 
-            {selectedMobileTraining && (
-              <div className="overflow-hidden rounded-[26px] bg-white ring-1 ring-black/10">
+              <div className="grid gap-3">
                 {filteredStudents.map((student) => {
-                  const hidden = hiddenStudents.includes(student.id);
-                  const status = getAttendance(selectedMobileTraining.id, student.id);
+                  const status = selectedMobileTraining
+                    ? getAttendance(selectedMobileTraining.id, student.id)
+                    : null;
 
                   return (
                     <div
                       key={student.id}
-                      className={`border-b border-black/5 p-3 last:border-b-0 ${
-                        hidden ? "opacity-45" : ""
-                      }`}
+                      className="rounded-3xl bg-[#f7f2e8] p-4 ring-1 ring-black/5"
                     >
-                      <div className="grid grid-cols-[1fr_132px] items-center gap-3">
-                        <button
-                          type="button"
-                          disabled={selectedMobileTraining ? !canWriteForTraining(selectedMobileTraining) : true}
-                          onClick={() =>
-                            setHiddenStudents((prev) =>
-                              prev.includes(student.id)
-                                ? prev.filter((id) => id !== student.id)
-                                : [...prev, student.id]
-                            )
-                          }
-                          className="min-w-0 text-left active:scale-[0.99] disabled:opacity-60"
-                        >
-                          <p className="truncate text-base font-black leading-tight">
+                      <div className="mb-3 flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="break-words text-lg font-black">
                             {student.first_name} {student.last_name}
                           </p>
-                          <p className="truncate text-sm font-bold text-black/50">
+
+                          <p className="text-sm font-semibold text-black/55">
                             {student.technical_grade || "Bez stupňa"}
                           </p>
-                        </button>
+                        </div>
 
-                        <div className="grid grid-cols-3 gap-1">
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-black ${
+                            status === "present"
+                              ? "bg-green-100 text-green-800"
+                              : status === "absent"
+                              ? "bg-red-100 text-red-800"
+                              : "bg-black/10 text-black/55"
+                          }`}
+                        >
+                          {status === "present"
+                            ? "Prítomný"
+                            : status === "absent"
+                            ? "Neprítomný"
+                            : "Neoznačené"}
+                        </span>
+                      </div>
+
+                      {selectedMobileTraining && (
+                        <div className="grid grid-cols-3 gap-2">
                           <button
                             type="button"
-                            disabled={!canWriteForTraining(selectedMobileTraining) || hidden}
+                            disabled={!canWriteTraining(selectedMobileTraining)}
                             onClick={() =>
                               setAttendanceStatus(
                                 selectedMobileTraining.id,
@@ -1231,7 +842,7 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
                                 "present"
                               )
                             }
-                            className={`flex h-11 items-center justify-center rounded-xl text-white disabled:opacity-40 ${
+                            className={`flex h-12 items-center justify-center rounded-2xl text-white disabled:opacity-35 ${
                               status === "present" ? "bg-green-600" : "bg-black/15"
                             }`}
                           >
@@ -1240,7 +851,7 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
 
                           <button
                             type="button"
-                            disabled={!canWriteForTraining(selectedMobileTraining) || hidden}
+                            disabled={!canWriteTraining(selectedMobileTraining)}
                             onClick={() =>
                               setAttendanceStatus(
                                 selectedMobileTraining.id,
@@ -1248,7 +859,7 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
                                 "absent"
                               )
                             }
-                            className={`flex h-11 items-center justify-center rounded-xl text-white disabled:opacity-40 ${
+                            className={`flex h-12 items-center justify-center rounded-2xl text-white disabled:opacity-35 ${
                               status === "absent" ? "bg-red-600" : "bg-black/15"
                             }`}
                           >
@@ -1257,91 +868,78 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
 
                           <button
                             type="button"
-                            disabled={!canWriteForTraining(selectedMobileTraining) || hidden}
+                            disabled={!canWriteTraining(selectedMobileTraining)}
                             onClick={() =>
-                              setAttendanceStatus(selectedMobileTraining.id, student.id, null)
+                              setAttendanceStatus(
+                                selectedMobileTraining.id,
+                                student.id,
+                                null
+                              )
                             }
-                            className={`flex h-11 items-center justify-center rounded-xl disabled:opacity-40 ${
-                              status === null
-                                ? "bg-[#111] text-white"
-                                : "bg-black/10 text-black"
-                            }`}
+                            className="flex h-12 items-center justify-center rounded-2xl bg-black/10 text-black disabled:opacity-35"
                           >
                             <XCircle size={20} />
                           </button>
                         </div>
-                      </div>
+                      )}
                     </div>
                   );
                 })}
               </div>
-            )}
-          </div>
-        )}
+            </div>
 
-        {trainings.length > 0 && filteredStudents.length > 0 && (
-          <div className="hidden md:block">
-            <div className="-mx-5 overflow-x-auto px-5">
+            <div className="-mx-5 hidden overflow-x-auto px-5 md:block">
               <table className="min-w-max border-separate border-spacing-0">
                 <thead>
                   <tr>
-                    <th className="sticky left-0 z-30 min-w-[210px] border-b bg-white p-3 text-left sm:min-w-[260px]">
+                    <th className="sticky left-0 z-30 min-w-[240px] border-b bg-white p-3 text-left">
                       <div className="flex items-center gap-2">
                         <Users size={18} />
                         Žiak
                       </div>
                     </th>
 
-                    {trainings.map((training) => (
-                      <th
-                        key={training.id}
-                        className="min-w-[170px] border-b p-3 text-center"
-                      >
-                        <div
-                          className={`rounded-3xl border p-3 space-y-2 shadow-sm ${topicColor(
-                            training.topic_id
-                          )}`}
+                    {trainings.map((training) => {
+                      const isSubstitutionDay = substitutionDates.includes(
+                        training.training_date
+                      );
+
+                      return (
+                        <th
+                          key={training.id}
+                          className="min-w-[175px] border-b p-3 text-center"
                         >
-                          <p className="text-lg font-black">
-                            {formatDate(training.training_date)}
-                          </p>
-                          <p className="text-xs font-bold text-black/45">
-                            {formatLongDate(training.training_date)}
-                          </p>
-
-                          {substitutionDates.includes(training.training_date) && !hasNormalDojoAccess && !isAdmin && (
-                            <p className="rounded-xl bg-indigo-600 px-2 py-1 text-xs font-black text-white">
-                              Záskok
+                          <div
+                            className={`rounded-3xl border p-3 shadow-sm ${topicColor(
+                              training.topic_id
+                            )}`}
+                          >
+                            <p className="text-lg font-black">
+                              {formatDate(training.training_date)}
                             </p>
-                          )}
 
-                          {canCreateTrainings ? (
-                            <select
-                              value={training.topic_id || ""}
-                              onChange={(e) =>
-                                updateTrainingTopic(training.id, e.target.value)
-                              }
-                              className="w-full rounded-xl border bg-white px-2 py-2 text-xs font-bold"
-                            >
-                              <option value="">Bez témy</option>
-                              {topics.map((topic) => (
-                                <option key={topic.id} value={topic.id}>
-                                  {topic.name}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <p className="text-xs font-bold">
-                              {training.training_topics?.name || "Bez témy"}
+                            <p className="text-xs font-bold text-black/45">
+                              {formatLongDate(training.training_date)}
                             </p>
-                          )}
 
-                          {canWriteForTraining(training) && (
-                            <div className="grid grid-cols-3 gap-1">
+                            <p className="mt-1 text-xs font-bold text-black/55">
+                              {training.training_topics?.name ||
+                                training.title ||
+                                "Bez témy"}
+                            </p>
+
+                            {isSubstitutionDay && (
+                              <p className="mt-2 rounded-xl bg-indigo-600 px-2 py-1 text-xs font-black text-white">
+                                Záskok
+                              </p>
+                            )}
+
+                            <div className="mt-2 grid grid-cols-3 gap-1">
                               <button
                                 type="button"
                                 onClick={() => markAll(training.id, "present")}
-                                className="rounded-xl bg-green-600 px-2 py-2 text-xs font-black text-white"
+                                disabled={!canWriteTraining(training)}
+                                className="rounded-xl bg-green-600 px-2 py-2 text-xs font-black text-white disabled:opacity-35"
                               >
                                 ✓
                               </button>
@@ -1349,7 +947,8 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
                               <button
                                 type="button"
                                 onClick={() => markAll(training.id, "absent")}
-                                className="rounded-xl bg-red-600 px-2 py-2 text-xs font-black text-white"
+                                disabled={!canWriteTraining(training)}
+                                className="rounded-xl bg-red-600 px-2 py-2 text-xs font-black text-white disabled:opacity-35"
                               >
                                 ✕
                               </button>
@@ -1357,142 +956,103 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
                               <button
                                 type="button"
                                 onClick={() => clearTraining(training.id)}
-                                className="rounded-xl bg-black/20 px-2 py-2 text-xs font-black text-black"
+                                disabled={!canWriteTraining(training)}
+                                className="rounded-xl bg-black/20 px-2 py-2 text-xs font-black text-black disabled:opacity-35"
                               >
                                 ↺
                               </button>
                             </div>
-                          )}
-                        </div>
-                      </th>
-                    ))}
+                          </div>
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
 
                 <tbody>
-                  {filteredStudents.map((student) => {
-                    const hidden = hiddenStudents.includes(student.id);
+                  {filteredStudents.map((student) => (
+                    <tr key={student.id}>
+                      <td className="sticky left-0 z-20 min-w-[240px] border-b bg-white p-3 shadow-[8px_0_12px_-12px_rgba(0,0,0,0.5)]">
+                        <p className="font-black leading-tight">
+                          {student.first_name} {student.last_name}
+                        </p>
 
-                    return (
-                      <tr key={student.id} className={hidden ? "opacity-45" : ""}>
-                        <td className="sticky left-0 z-20 min-w-[210px] border-b bg-white p-3 shadow-[8px_0_12px_-12px_rgba(0,0,0,0.5)] sm:min-w-[260px]">
-                          <p className="font-black leading-tight">
-                            {student.first_name} {student.last_name}
-                          </p>
-                          <p className="text-sm text-black/55">
-                            {student.technical_grade || "Bez stupňa"}
-                          </p>
+                        <p className="text-sm text-black/55">
+                          {student.technical_grade || "Bez stupňa"}
+                        </p>
+                      </td>
 
-                          {canWriteAttendance && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setHiddenStudents((prev) =>
-                                  prev.includes(student.id)
-                                    ? prev.filter((id) => id !== student.id)
-                                    : [...prev, student.id]
-                                )
-                              }
-                              className={`mt-2 rounded-xl px-3 py-1 text-xs font-black ${
-                                hidden
-                                  ? "bg-green-100 text-green-800"
-                                  : "bg-red-50 text-red-700"
-                              }`}
-                            >
-                              {hidden ? "Vrátiť" : "Skryť"}
-                            </button>
-                          )}
-                        </td>
+                      {trainings.map((training) => {
+                        const status = getAttendance(training.id, student.id);
+                        const canWrite = canWriteTraining(training);
 
-                        {trainings.map((training) => {
-                          const status = getAttendance(training.id, student.id);
-
-                          return (
-                            <td
-                              key={training.id}
-                              className="border-b p-3 text-center"
-                            >
-                              <div className="grid grid-cols-3 gap-1">
-                                <button
-                                  type="button"
-                                  disabled={!canWriteForTraining(training) || hidden}
-                                  onClick={() =>
-                                    setAttendanceStatus(
-                                      training.id,
-                                      student.id,
-                                      "present"
-                                    )
-                                  }
-                                  className={`flex h-11 items-center justify-center rounded-xl text-white disabled:opacity-40 ${
-                                    status === "present"
-                                      ? "bg-green-600"
-                                      : "bg-black/15"
-                                  }`}
-                                >
-                                  <Check size={18} />
-                                </button>
-
-                                <button
-                                  type="button"
-                                  disabled={!canWriteForTraining(training) || hidden}
-                                  onClick={() =>
-                                    setAttendanceStatus(
-                                      training.id,
-                                      student.id,
-                                      "absent"
-                                    )
-                                  }
-                                  className={`flex h-11 items-center justify-center rounded-xl text-white disabled:opacity-40 ${
-                                    status === "absent"
-                                      ? "bg-red-600"
-                                      : "bg-black/15"
-                                  }`}
-                                >
-                                  <X size={18} />
-                                </button>
-
-                                <button
-                                  type="button"
-                                  disabled={!canWriteForTraining(training) || hidden}
-                                  onClick={() =>
-                                    setAttendanceStatus(training.id, student.id, null)
-                                  }
-                                  className={`flex h-11 items-center justify-center rounded-xl disabled:opacity-40 ${
-                                    status === null
-                                      ? "bg-[#111] text-white"
-                                      : "bg-black/10 text-black"
-                                  }`}
-                                >
-                                  <XCircle size={18} />
-                                </button>
-                              </div>
+                        return (
+                          <td key={training.id} className="border-b p-3 text-center">
+                            <div className="grid grid-cols-3 gap-1">
+                              <button
+                                type="button"
+                                disabled={!canWrite}
+                                onClick={() =>
+                                  setAttendanceStatus(
+                                    training.id,
+                                    student.id,
+                                    "present"
+                                  )
+                                }
+                                className={`flex h-11 items-center justify-center rounded-xl text-white disabled:opacity-35 ${
+                                  status === "present"
+                                    ? "bg-green-600"
+                                    : "bg-black/15"
+                                }`}
+                              >
+                                <Check size={18} />
+                              </button>
 
                               <button
                                 type="button"
-                                disabled={!canWriteForTraining(training) || hidden}
+                                disabled={!canWrite}
                                 onClick={() =>
-                                  cycleAttendance(training.id, student.id)
+                                  setAttendanceStatus(
+                                    training.id,
+                                    student.id,
+                                    "absent"
+                                  )
                                 }
-                                className="mt-1 text-[10px] font-bold text-black/35 disabled:opacity-40"
+                                className={`flex h-11 items-center justify-center rounded-xl text-white disabled:opacity-35 ${
+                                  status === "absent"
+                                    ? "bg-red-600"
+                                    : "bg-black/15"
+                                }`}
                               >
-                                cyklus
+                                <X size={18} />
                               </button>
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    );
-                  })}
+
+                              <button
+                                type="button"
+                                disabled={!canWrite}
+                                onClick={() =>
+                                  setAttendanceStatus(training.id, student.id, null)
+                                }
+                                className="flex h-11 items-center justify-center rounded-xl bg-black/10 text-black disabled:opacity-35"
+                              >
+                                <XCircle size={18} />
+                              </button>
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
-          </div>
+          </>
         )}
       </div>
 
       <Link
         href={`/dojos/${params.id}`}
-        className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#d71920] px-4 py-4 text-center font-bold text-white shadow-[0_6px_14px_rgba(215,25,32,0.25)] active:scale-[0.98]"
+        className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#d71920] px-4 py-4 text-center font-black text-white shadow-[0_6px_14px_rgba(215,25,32,0.25)] active:scale-[0.98]"
       >
         <ArrowLeft size={18} />
         Späť do dojo

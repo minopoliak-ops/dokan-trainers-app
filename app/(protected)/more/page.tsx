@@ -64,6 +64,7 @@ export default function MorePage() {
 
   async function loadNotifications() {
     setLoadingNotifications(true);
+
     const supabase = createClient();
 
     const [substitutionRes, trainersRes] = await Promise.all([
@@ -78,7 +79,9 @@ export default function MorePage() {
         .not("email", "is", null),
     ]);
 
-    if (!substitutionRes.error) setOpenSubstitutions(substitutionRes.count || 0);
+    if (!substitutionRes.error) {
+      setOpenSubstitutions(substitutionRes.count || 0);
+    }
 
     if (!trainersRes.error) {
       setTrainerEmails(
@@ -93,6 +96,25 @@ export default function MorePage() {
 
   useEffect(() => {
     loadNotifications();
+
+    const supabase = createClient();
+
+    const channel = supabase
+      .channel("more-substitutions-live")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "training_substitution_requests",
+        },
+        () => loadNotifications()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const trainerMailto = useMemo(() => {
@@ -143,7 +165,7 @@ ${appUrl}
             <div
               className={`rounded-2xl p-4 transition ${
                 openSubstitutions > 0
-                  ? "bg-[#d71920] text-white shadow-[0_10px_25px_rgba(215,25,32,0.25)]"
+                  ? "bg-indigo-600 text-white shadow-[0_10px_25px_rgba(79,70,229,0.25)]"
                   : "bg-white/10"
               }`}
             >
@@ -170,7 +192,7 @@ ${appUrl}
       </div>
 
       {openSubstitutions > 0 && (
-        <div className="rounded-[30px] bg-[#d71920] p-5 text-white shadow-[0_14px_30px_rgba(215,25,32,0.28)]">
+        <div className="rounded-[30px] bg-indigo-600 p-5 text-white shadow-[0_14px_30px_rgba(79,70,229,0.28)]">
           <div className="flex items-start gap-3">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/15">
               <BellRing size={24} />
@@ -192,7 +214,7 @@ ${appUrl}
               <div className="mt-4 grid gap-2 md:grid-cols-2">
                 <Link
                   href="/substitutions"
-                  className="inline-flex h-[50px] items-center justify-center gap-2 rounded-2xl bg-white px-4 font-black text-[#d71920] active:scale-[0.98]"
+                  className="inline-flex h-[50px] items-center justify-center gap-2 rounded-2xl bg-white px-4 font-black text-indigo-700 active:scale-[0.98]"
                 >
                   <Handshake size={18} />
                   Otvoriť zastupovanie
@@ -243,19 +265,23 @@ ${appUrl}
                 isPrimary
                   ? "bg-white ring-[#d71920]/20 shadow-[0_8px_20px_rgba(0,0,0,0.06)]"
                   : "bg-[#f7f2e8] ring-black/5"
-              } ${hasSubstitutionBadge ? "ring-red-200" : ""}`;
+              } ${hasSubstitutionBadge ? "ring-indigo-200" : ""}`;
 
               const content = (
                 <>
                   {hasSubstitutionBadge && (
-                    <div className="absolute right-3 top-3 z-10 inline-flex h-8 min-w-8 items-center justify-center rounded-full bg-[#d71920] px-2 text-sm font-black text-white shadow-[0_8px_18px_rgba(215,25,32,0.25)]">
-                      {openSubstitutions}
+                    <div className="absolute right-3 top-3 z-10 inline-flex h-8 min-w-8 items-center justify-center rounded-full bg-amber-400 px-2 text-sm font-black text-black shadow-[0_8px_18px_rgba(245,158,11,0.28)] ring-2 ring-white">
+                      {openSubstitutions > 9 ? "9+" : openSubstitutions}
                     </div>
                   )}
 
                   <div
                     className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl text-white ${
-                      isPrimary ? "bg-[#d71920]" : "bg-[#111]"
+                      title.includes("Zastupovanie")
+                        ? "bg-indigo-600"
+                        : isPrimary
+                        ? "bg-[#d71920]"
+                        : "bg-[#111]"
                     }`}
                   >
                     <Icon size={26} />
@@ -271,7 +297,7 @@ ${appUrl}
                         <span
                           className={`rounded-full px-3 py-1 text-xs font-black ${
                             hasSubstitutionBadge
-                              ? "bg-red-100 text-red-800"
+                              ? "bg-amber-100 text-amber-900"
                               : "bg-[#d71920]/10 text-[#d71920]"
                           }`}
                         >
@@ -289,7 +315,11 @@ ${appUrl}
 
                   <div
                     className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl font-black ${
-                      isPrimary ? "bg-[#d71920] text-white" : "bg-white text-black"
+                      title.includes("Zastupovanie")
+                        ? "bg-indigo-600 text-white"
+                        : isPrimary
+                        ? "bg-[#d71920] text-white"
+                        : "bg-white text-black"
                     }`}
                   >
                     ↗
