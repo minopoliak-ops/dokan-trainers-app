@@ -4,12 +4,8 @@ import { createClient } from "@/lib/supabase/browser";
 import { usePermissions } from "@/lib/usePermissions";
 import {
   AlertCircle,
-  ArrowRight,
   BellRing,
-  CalendarDays,
-  Check,
   CheckCircle2,
-  Clock3,
   Dumbbell,
   Handshake,
   Mail,
@@ -17,11 +13,8 @@ import {
   RefreshCcw,
   Send,
   ShieldCheck,
-  Sparkles,
   Trash2,
   UserCheck,
-  Users,
-  X,
   XCircle,
 } from "lucide-react";
 import Link from "next/link";
@@ -40,6 +33,7 @@ type SubstitutionRequest = {
   status: SubstitutionStatus | string | null;
   note: string | null;
   topics_note: string | null;
+  seen_by: string[] | null;
   created_at: string | null;
   dojos?: { name?: string | null } | null;
   requester?: { full_name?: string | null; email?: string | null } | null;
@@ -58,6 +52,7 @@ function today() {
 
 function formatDate(date?: string | null) {
   if (!date) return "Bez dátumu";
+
   return new Date(date).toLocaleDateString("sk-SK", {
     weekday: "short",
     day: "2-digit",
@@ -106,7 +101,75 @@ export default function SubstitutionsPage() {
     !!permissions?.can_attendance ||
     !!permissions?.can_manage_topics;
 
-  async function loadData() {
+  async function markSubstitutionsAsSeen(rows?: SubstitutionRequest[]) {
+    if (!permissions?.id) return;
+
+    const supabase = createClient();
+
+    const sourceRows =
+      rows ||
+      (
+        await supabase
+          .from("training_substitution_requests")
+          .select("id, seen_by, status, requester_id, substitute_id")
+      ).data ||
+      [];
+
+    const relevantRows = (sourceRows as SubstitutionRequest[]).filter((request) => {
+      const seenBy = Array.isArray(request.seen_by) ? request.seen_by : [];
+
+      if (seenBy.includes(permissions.id)) return false;
+
+      /*
+        Označíme ako prečítané:
+        - otvorené žiadosti pre trénerov,
+        - potvrdené žiadosti, ktoré sa týkajú prihláseného trénera
+          ako autora alebo zastupujúceho.
+      */
+      if (request.status === "open") return true;
+
+      if (
+        request.status === "accepted" &&
+        (request.requester_id === permissions.id ||
+          request.substitute_id === permissions.id)
+      ) {
+        return true;
+      }
+
+      return false;
+    });
+
+    if (relevantRows.length === 0) return;
+
+    await Promise.all(
+      relevantRows.map((request) => {
+        const seenBy = Array.isArray(request.seen_by) ? request.seen_by : [];
+
+        return supabase
+          .from("training_substitution_requests")
+          .update({
+            seen_by: [...seenBy, permissions.id],
+          })
+          .eq("id", request.id);
+      })
+    );
+
+    setRequests((current) =>
+      current.map((request) => {
+        const shouldUpdate = relevantRows.some((item) => item.id === request.id);
+        const seenBy = Array.isArray(request.seen_by) ? request.seen_by : [];
+
+        if (!shouldUpdate || seenBy.includes(permissions.id)) return request;
+
+        return {
+          ...request,
+          seen_by: [...seenBy, permissions.id],
+        };
+      })
+    );
+  }
+
+  async function loadData(markSeen = false) {
     if (permissionsLoading) return;
 
     setLoading(true);
@@ -133,7 +196,11 @@ export default function SubstitutionsPage() {
         .gte("training_date", today())
         .order("training_date", { ascending: true })
         .limit(120),
-      supabase.from("trainers").select("id,full_name,email,active").eq("active", true).order("full_name"),
+      supabase
+        .from("trainers")
+        .select("id,full_name,email,active")
+        .eq("active", true)
+        .order("full_name"),
     ]);
 
     if (requestsRes.error) alert(requestsRes.error.message);
@@ -141,7 +208,9 @@ export default function SubstitutionsPage() {
     if (trainingsRes.error) console.error(trainingsRes.error.message);
     if (trainersRes.error) console.error(trainersRes.error.message);
 
-    setRequests(requestsRes.data || []);
+    const requestRows = (requestsRes.data || []) as SubstitutionRequest[];
+
+    setRequests(requestRows);
     setDojos(dojosRes.data || []);
     setTrainings(trainingsRes.data || []);
     setTrainers(trainersRes.data || []);
@@ -151,10 +220,16 @@ export default function SubstitutionsPage() {
     }
 
     setLoading(false);
+
+    if (markSeen) {
+      markSubstitutionsAsSeen(requestRows);
+    }
   }
 
   useEffect(() => {
-    loadData();
+    if (permissionsLoading) return;
+
+    loadData(true);
 
     const supabase = createClient();
 
@@ -167,7 +242,7 @@ export default function SubstitutionsPage() {
           schema: "public",
           table: "training_substitution_requests",
         },
-        () => loadData()
+        () => loadData(false)
       )
       .subscribe();
 
@@ -178,18 +253,41 @@ export default function SubstitutionsPage() {
 
   useEffect(() => {
     const training = trainings.find((t) => t.id === selectedTrainingId);
+
     if (training?.dojo_id) setSelectedDojoId(training.dojo_id);
     if (training?.training_date) {
       setRequestDate(training.training_date);
       setEndDate("");
     }
-  }, [selectedTrainingId]);
+  }, [selectedTrainingId, trainings]);
 
   const openCount = requests.filter((r) => r.status === "open").length;
   const acceptedCount = requests.filter((r) => r.status === "accepted").length;
   const myAcceptedCount = requests.filter(
     (r) => r.status === "accepted" && r.substitute_id === permissions?.id
   ).length;
+
+  const unseenCount = useMemo(() => {
+    if (!permissions?.id) return 0;
+
+    return requests.filter((request) => {
+      const seenBy = Array.isArray(request.seen_by) ? request.seen_by : [];
+
+      if (seenBy.includes(permissions.id)) return false;
+
+      if (request.status === "open") return true;
+
+      if (
+        request.status === "accepted" &&
+        (request.requester_id === permissions.id ||
+          request.substitute_id === permissions.id)
+      ) {
+        return true;
+      }
+
+      return false;
+    }).length;
+  }, [requests, permissions?.id]);
 
   const trainerEmails = useMemo(() => {
     return trainers
@@ -222,9 +320,12 @@ ${appUrl}
     if (filter === "accepted") return requests.filter((r) => r.status === "accepted");
     if (filter === "mine") {
       return requests.filter(
-        (r) => r.requester_id === permissions?.id || r.substitute_id === permissions?.id
+        (r) =>
+          r.requester_id === permissions?.id ||
+          r.substitute_id === permissions?.id
       );
     }
+
     return requests;
   }, [filter, requests, permissions?.id]);
 
@@ -252,9 +353,12 @@ ${appUrl}
       status: "open",
       note: note.trim() || null,
       topics_note: topicsNote.trim() || null,
+      seen_by: permissions?.id ? [permissions.id] : [],
     };
 
-    const { error } = await supabase.from("training_substitution_requests").insert(payload);
+    const { error } = await supabase
+      .from("training_substitution_requests")
+      .insert(payload);
 
     setSaving(false);
 
@@ -266,7 +370,7 @@ ${appUrl}
     setNote("");
     setTopicsNote("");
     setFilter("open");
-    loadData();
+    loadData(false);
   }
 
   async function acceptRequest(request: SubstitutionRequest) {
@@ -275,6 +379,11 @@ ${appUrl}
       return alert("Nemôžeš prevziať vlastnú žiadosť.");
     }
 
+    const seenBy = Array.isArray(request.seen_by) ? request.seen_by : [];
+    const nextSeenBy = seenBy.includes(permissions.id)
+      ? seenBy
+      : [...seenBy, permissions.id];
+
     const supabase = createClient();
 
     const { error } = await supabase
@@ -282,6 +391,7 @@ ${appUrl}
       .update({
         substitute_id: permissions.id,
         status: "accepted",
+        seen_by: nextSeenBy,
       })
       .eq("id", request.id)
       .eq("status", "open");
@@ -291,7 +401,12 @@ ${appUrl}
     setRequests((prev) =>
       prev.map((item) =>
         item.id === request.id
-          ? { ...item, substitute_id: permissions.id, status: "accepted" }
+          ? {
+              ...item,
+              substitute_id: permissions.id,
+              status: "accepted",
+              seen_by: nextSeenBy,
+            }
           : item
       )
     );
@@ -309,6 +424,7 @@ ${appUrl}
       .update({
         substitute_id: null,
         status: "open",
+        seen_by: permissions?.id ? [permissions.id] : [],
       })
       .eq("id", request.id);
 
@@ -317,7 +433,12 @@ ${appUrl}
     setRequests((prev) =>
       prev.map((item) =>
         item.id === request.id
-          ? { ...item, substitute_id: null, status: "open" }
+          ? {
+              ...item,
+              substitute_id: null,
+              status: "open",
+              seen_by: permissions?.id ? [permissions.id] : [],
+            }
           : item
       )
     );
@@ -393,10 +514,10 @@ ${appUrl}
 
           <p className="mt-3 max-w-2xl text-white/65">
             Tréner vytvorí žiadosť, ostatní ju vidia hneď bez refreshu.
-            Po potvrdení záskoku sa zastupujúcemu otvorí prezenčka pre dané dojo a deň.
+            Po otvorení tejto sekcie sa notifikácia označí ako prečítaná iba tebe.
           </p>
 
-          <div className="mt-6 grid gap-3 md:grid-cols-3">
+          <div className="mt-6 grid gap-3 md:grid-cols-4">
             <div className="rounded-2xl bg-white/10 p-4">
               <p className="text-sm text-white/50">Otvorené</p>
               <p className="text-3xl font-black text-amber-300">{openCount}</p>
@@ -411,11 +532,16 @@ ${appUrl}
               <p className="text-sm text-white/50">Moje záskoky</p>
               <p className="text-3xl font-black text-indigo-300">{myAcceptedCount}</p>
             </div>
+
+            <div className="rounded-2xl bg-white/10 p-4">
+              <p className="text-sm text-white/50">Neprečítané</p>
+              <p className="text-3xl font-black text-white">{unseenCount}</p>
+            </div>
           </div>
         </div>
       </div>
 
-      {openCount > 0 && (
+      {unseenCount > 0 && (
         <div className="rounded-[30px] bg-indigo-600 p-5 text-white shadow-[0_14px_30px_rgba(79,70,229,0.28)]">
           <div className="flex items-start gap-3">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/15">
@@ -424,12 +550,45 @@ ${appUrl}
 
             <div className="min-w-0 flex-1">
               <p className="text-sm font-black uppercase tracking-[0.14em] text-white/65">
+                Notifikácia
+              </p>
+
+              <h2 className="mt-1 text-2xl font-black">
+                Máš nové info k zastupovaniu
+              </h2>
+
+              <p className="mt-1 font-semibold text-white/80">
+                Otvorením tejto stránky sa notifikácia označí ako prečítaná.
+              </p>
+
+              <button
+                type="button"
+                onClick={() => markSubstitutionsAsSeen(requests)}
+                className="mt-4 inline-flex h-[48px] w-full items-center justify-center gap-2 rounded-2xl bg-white px-4 font-black text-indigo-700 active:scale-[0.98] md:w-auto"
+              >
+                <CheckCircle2 size={18} />
+                Označiť ako prečítané
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {openCount > 0 && (
+        <div className="rounded-[30px] bg-white p-5 shadow-sm ring-1 ring-indigo-200">
+          <div className="flex items-start gap-3">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-indigo-600 text-white">
+              <BellRing size={24} />
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-black uppercase tracking-[0.14em] text-black/35">
                 Live upozornenie
               </p>
 
               <h2 className="mt-1 text-2xl font-black">Treba zastúpiť tréning</h2>
 
-              <p className="mt-1 font-semibold text-white/80">
+              <p className="mt-1 font-semibold text-black/55">
                 Aktuálne je otvorených {openCount} žiadostí. Zmena sa aktualizuje automaticky.
               </p>
 
@@ -557,7 +716,7 @@ ${appUrl}
 
           <button
             type="button"
-            onClick={loadData}
+            onClick={() => loadData(false)}
             className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-black/10 px-4 font-black text-black active:scale-[0.98]"
           >
             <RefreshCcw size={17} />
@@ -600,6 +759,13 @@ ${appUrl}
         ) : (
           <div className="grid gap-3">
             {visibleRequests.map((request) => {
+              const seenBy = Array.isArray(request.seen_by)
+                ? request.seen_by
+                : [];
+              const unseen = permissions?.id
+                ? !seenBy.includes(permissions.id)
+                : false;
+
               const canAccept =
                 request.status === "open" &&
                 permissions?.id &&
@@ -621,17 +787,25 @@ ${appUrl}
                       : request.status === "open"
                       ? "bg-[#f7f2e8] ring-amber-200"
                       : "bg-[#f7f2e8] ring-black/5"
-                  }`}
+                  } ${unseen ? "shadow-[0_10px_26px_rgba(79,70,229,0.16)]" : ""}`}
                 >
                   <div className="p-4">
                     <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                      <span
-                        className={`rounded-full px-3 py-1 text-xs font-black ring-1 ${statusClass(
-                          request.status
-                        )}`}
-                      >
-                        {statusLabel(request.status)}
-                      </span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-black ring-1 ${statusClass(
+                            request.status
+                          )}`}
+                        >
+                          {statusLabel(request.status)}
+                        </span>
+
+                        {unseen && (
+                          <span className="rounded-full bg-indigo-600 px-3 py-1 text-xs font-black text-white">
+                            Nové
+                          </span>
+                        )}
+                      </div>
 
                       <p className="text-sm font-black text-black/45">
                         {formatDate(request.request_date)}
