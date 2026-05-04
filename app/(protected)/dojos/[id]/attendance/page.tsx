@@ -12,6 +12,7 @@ import {
   Eye,
   EyeOff,
   Filter,
+  Handshake,
   Plus,
   RefreshCcw,
   Search,
@@ -105,6 +106,8 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
   const [attendance, setAttendance] = useState<any[]>([]);
   const [blackouts, setBlackouts] = useState<any[]>([]);
   const [hiddenStudents, setHiddenStudents] = useState<string[]>([]);
+  const [substitutionDates, setSubstitutionDates] = useState<string[]>([]);
+  const [hasNormalDojoAccess, setHasNormalDojoAccess] = useState(false);
 
   const [allowed, setAllowed] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -216,8 +219,17 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
 
     const isAdminNow = !!permissions?.can_manage_trainers;
 
-    if (isAdminNow) return true;
-    if (!permissions?.id) return false;
+    if (!permissions?.id) {
+      setHasNormalDojoAccess(false);
+      setSubstitutionDates([]);
+      return false;
+    }
+
+    if (isAdminNow) {
+      setHasNormalDojoAccess(true);
+      setSubstitutionDates([]);
+      return true;
+    }
 
     const { data: link, error } = await supabase
       .from("trainer_dojos")
@@ -228,10 +240,30 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
 
     if (error) {
       console.error("Attendance access error:", error);
-      return false;
     }
 
-    return !!link;
+    const normalAccess = !!link;
+    setHasNormalDojoAccess(normalAccess);
+
+    const { data: substitutionRows, error: substitutionError } = await supabase
+      .from("training_substitution_requests")
+      .select("request_date")
+      .eq("substitute_id", permissions.id)
+      .eq("dojo_id", params.id)
+      .eq("status", "accepted")
+      .gte("request_date", monthStart)
+      .lte("request_date", monthEnd);
+
+    if (substitutionError) {
+      console.error("Substitution access error:", substitutionError);
+      setSubstitutionDates([]);
+      return normalAccess;
+    }
+
+    const dates = (substitutionRows || []).map((row: any) => row.request_date);
+    setSubstitutionDates(dates);
+
+    return normalAccess || dates.length > 0;
   }
 
   async function loadData() {
@@ -529,12 +561,24 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
     );
   }
 
+
+  function canWriteForTraining(training: any) {
+    if (!training) return false;
+    if (isAdmin) return true;
+    if (hasNormalDojoAccess) return canWriteAttendance;
+    return substitutionDates.includes(training.training_date);
+  }
+
   async function setAttendanceStatus(
     trainingId: string,
     studentId: string,
     next: Status
   ) {
-    if (!canWriteAttendance) return alert("Nemáš oprávnenie zapisovať prezenčku.");
+    const training = trainings.find((item) => item.id === trainingId);
+
+    if (!canWriteForTraining(training)) {
+      return alert("Nemáš oprávnenie zapisovať prezenčku pre tento deň.");
+    }
 
     const supabase = createClient();
 
@@ -581,7 +625,11 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
   }
 
   async function markAll(trainingId: string, status: "present" | "absent") {
-    if (!canWriteAttendance) return;
+    const training = trainings.find((item) => item.id === trainingId);
+
+    if (!canWriteForTraining(training)) {
+      return alert("Nemáš oprávnenie zapisovať prezenčku pre tento deň.");
+    }
 
     const supabase = createClient();
 
@@ -611,7 +659,12 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
   }
 
   async function clearTraining(trainingId: string) {
-    if (!canWriteAttendance) return;
+    const training = trainings.find((item) => item.id === trainingId);
+
+    if (!canWriteForTraining(training)) {
+      return alert("Nemáš oprávnenie zapisovať prezenčku pre tento deň.");
+    }
+
     if (!confirm("Vymazať označenia pre tento tréning?")) return;
 
     const supabase = createClient();
@@ -699,6 +752,22 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
           </div>
         </div>
       </div>
+
+      {substitutionDates.length > 0 && !hasNormalDojoAccess && !isAdmin && (
+        <div className="rounded-[30px] bg-indigo-600 p-5 text-white shadow-[0_12px_28px_rgba(79,70,229,0.25)]">
+          <div className="flex items-start gap-3">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/15">
+              <Handshake size={24} />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-2xl font-black">Zastupovanie aktívne</h2>
+              <p className="mt-1 font-semibold text-white/80">
+                Pre tieto dni máš odomknutú prezenčku: {substitutionDates.map((date) => new Date(date).toLocaleDateString("sk-SK")).join(", ")}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-3 md:grid-cols-[1fr_auto_auto]">
         <div className="overflow-hidden rounded-[26px] bg-white p-4 shadow-sm ring-1 ring-black/10">
@@ -1063,6 +1132,12 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
                     </div>
                   </div>
 
+                  {substitutionDates.includes(selectedMobileTraining.training_date) && !hasNormalDojoAccess && !isAdmin && (
+                    <p className="mb-3 rounded-2xl bg-indigo-600 px-3 py-2 text-center text-sm font-black text-white">
+                      Záskok - prezenčka odomknutá
+                    </p>
+                  )}
+
                   {canCreateTrainings && (
                     <select
                       value={selectedMobileTraining.topic_id || ""}
@@ -1080,7 +1155,7 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
                     </select>
                   )}
 
-                  {canWriteAttendance && (
+                  {selectedMobileTraining && canWriteForTraining(selectedMobileTraining) && (
                     <div className="grid grid-cols-3 gap-2">
                       <button
                         type="button"
@@ -1127,7 +1202,7 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
                       <div className="grid grid-cols-[1fr_132px] items-center gap-3">
                         <button
                           type="button"
-                          disabled={!canWriteAttendance}
+                          disabled={selectedMobileTraining ? !canWriteForTraining(selectedMobileTraining) : true}
                           onClick={() =>
                             setHiddenStudents((prev) =>
                               prev.includes(student.id)
@@ -1148,7 +1223,7 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
                         <div className="grid grid-cols-3 gap-1">
                           <button
                             type="button"
-                            disabled={!canWriteAttendance || hidden}
+                            disabled={!canWriteForTraining(selectedMobileTraining) || hidden}
                             onClick={() =>
                               setAttendanceStatus(
                                 selectedMobileTraining.id,
@@ -1165,7 +1240,7 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
 
                           <button
                             type="button"
-                            disabled={!canWriteAttendance || hidden}
+                            disabled={!canWriteForTraining(selectedMobileTraining) || hidden}
                             onClick={() =>
                               setAttendanceStatus(
                                 selectedMobileTraining.id,
@@ -1182,7 +1257,7 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
 
                           <button
                             type="button"
-                            disabled={!canWriteAttendance || hidden}
+                            disabled={!canWriteForTraining(selectedMobileTraining) || hidden}
                             onClick={() =>
                               setAttendanceStatus(selectedMobileTraining.id, student.id, null)
                             }
@@ -1234,6 +1309,12 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
                             {formatLongDate(training.training_date)}
                           </p>
 
+                          {substitutionDates.includes(training.training_date) && !hasNormalDojoAccess && !isAdmin && (
+                            <p className="rounded-xl bg-indigo-600 px-2 py-1 text-xs font-black text-white">
+                              Záskok
+                            </p>
+                          )}
+
                           {canCreateTrainings ? (
                             <select
                               value={training.topic_id || ""}
@@ -1255,7 +1336,7 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
                             </p>
                           )}
 
-                          {canWriteAttendance && (
+                          {canWriteForTraining(training) && (
                             <div className="grid grid-cols-3 gap-1">
                               <button
                                 type="button"
@@ -1334,7 +1415,7 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
                               <div className="grid grid-cols-3 gap-1">
                                 <button
                                   type="button"
-                                  disabled={!canWriteAttendance || hidden}
+                                  disabled={!canWriteForTraining(training) || hidden}
                                   onClick={() =>
                                     setAttendanceStatus(
                                       training.id,
@@ -1353,7 +1434,7 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
 
                                 <button
                                   type="button"
-                                  disabled={!canWriteAttendance || hidden}
+                                  disabled={!canWriteForTraining(training) || hidden}
                                   onClick={() =>
                                     setAttendanceStatus(
                                       training.id,
@@ -1372,7 +1453,7 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
 
                                 <button
                                   type="button"
-                                  disabled={!canWriteAttendance || hidden}
+                                  disabled={!canWriteForTraining(training) || hidden}
                                   onClick={() =>
                                     setAttendanceStatus(training.id, student.id, null)
                                   }
@@ -1388,7 +1469,7 @@ export default function AttendancePage({ params }: { params: { id: string } }) {
 
                               <button
                                 type="button"
-                                disabled={!canWriteAttendance || hidden}
+                                disabled={!canWriteForTraining(training) || hidden}
                                 onClick={() =>
                                   cycleAttendance(training.id, student.id)
                                 }
